@@ -211,6 +211,40 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Endpoint: Get Profile (Fetch latest data)
+app.post('/api/auth/profile', async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username is required.' });
+    }
+
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: user.inventoryData
+      }
+    });
+
+  } catch (error) {
+    console.error('Fetch profile error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 // Endpoint: Sync Profile Data
 app.post('/api/auth/sync', async (req, res) => {
   try {
