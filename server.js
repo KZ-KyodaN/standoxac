@@ -26,6 +26,18 @@ function writeUsersLocal(users) {
   fs.writeFileSync(dbFilePath, JSON.stringify(users, null, 2));
 }
 
+// Local JSON Promocodes Database Setup
+const promocodeDbFilePath = path.join(__dirname, 'promocodes.json');
+function readPromocodesLocal() {
+  if (!fs.existsSync(promocodeDbFilePath)) {
+    fs.writeFileSync(promocodeDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(promocodeDbFilePath, 'utf8'));
+}
+function writePromocodesLocal(promos) {
+  fs.writeFileSync(promocodeDbFilePath, JSON.stringify(promos, null, 2));
+}
+
 let isUsingLocalJson = false;
 
 // Connect to MongoDB with timeout
@@ -105,6 +117,89 @@ const db = {
     return userData;
   }
 };
+
+// Promocode Model Schema (Mongoose)
+const promocodeSchema = new mongoose.Schema({
+  code: { type: String, required: true, unique: true },
+  rewards: [{ type: { type: String }, count: Number }],
+  maxActivations: { type: Number, default: 0 }, // 0 = unlimited
+  currentActivations: { type: Number, default: 0 },
+  expirationDate: { type: String, default: null }, // null = unlimited (ISO string or YYYY-MM-DD)
+  usedBy: [{ type: String }] // array of usernames in lowercase
+});
+
+const Promocode = mongoose.model('Promocode', promocodeSchema);
+
+// DB Wrapper for Promocodes
+const promoDb = {
+  findOne: async (code) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await Promocode.findOne({ code: { $regex: new RegExp(`^${code}$`, 'i') } });
+      } catch (err) {
+        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const promos = readPromocodesLocal();
+    const regex = new RegExp(`^${code}$`, 'i');
+    return promos.find(p => regex.test(p.code));
+  },
+
+  save: async (promoData) => {
+    if (!isUsingLocalJson && promoData.save) {
+      try {
+        return await promoData.save();
+      } catch (err) {
+        console.warn('Mongoose save failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const promos = readPromocodesLocal();
+    const idx = promos.findIndex(p => p.code.toLowerCase() === promoData.code.toLowerCase());
+    if (idx !== -1) {
+      promos[idx] = promoData;
+    } else {
+      promos.push(promoData);
+    }
+    writePromocodesLocal(promos);
+    return promoData;
+  }
+};
+
+// Seed default promocode if none exists
+async function seedDefaultPromocodes() {
+  try {
+    const giftPromo = await promoDb.findOne('GIFT');
+    if (!giftPromo) {
+      const defaultPromo = {
+        code: 'GIFT',
+        rewards: [
+          { type: 'gold', count: 5000 },
+          { type: 'AKR12_Aurora', count: 1 }
+        ],
+        maxActivations: 100,
+        currentActivations: 0,
+        expirationDate: '2026-12-31',
+        usedBy: []
+      };
+      if (!isUsingLocalJson) {
+        const p = new Promocode(defaultPromo);
+        await p.save();
+      } else {
+        const promos = readPromocodesLocal();
+        promos.push(defaultPromo);
+        writePromocodesLocal(promos);
+      }
+      console.log('Seeded default promo code: GIFT');
+    }
+  } catch (err) {
+    console.error('Error seeding default promo codes:', err);
+  }
+}
+
+// Call seed function after some delay to allow MongoDB to connect
+setTimeout(seedDefaultPromocodes, 3000);
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -277,6 +372,104 @@ app.post('/api/auth/sync', async (req, res) => {
   } catch (error) {
     console.error('Sync error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Redeem Promo Code
+app.post('/api/auth/redeem-promo', async (req, res) => {
+  try {
+    const { username, promoCode } = req.body;
+
+    if (!username || !promoCode) {
+      return res.status(400).json({ success: false, message: 'Пользователь и промокод обязательны.' });
+    }
+
+    // 1. Find user
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+    }
+
+    // 2. Find promo code
+    const promo = await promoDb.findOne(promoCode);
+    if (!promo) {
+      return res.status(404).json({ success: false, message: 'Промокод не существует.' });
+    }
+
+    // 3. Check expiration date
+    if (promo.expirationDate) {
+      const expDate = new Date(promo.expirationDate);
+      if (new Date() > expDate) {
+        return res.status(400).json({ success: false, message: 'Срок действия промокода истек.' });
+      }
+    }
+
+    // 4. Check max activations
+    if (promo.maxActivations > 0 && promo.currentActivations >= promo.maxActivations) {
+      return res.status(400).json({ success: false, message: 'Количество активаций промокода исчерпано.' });
+    }
+
+    // 5. Check if user already used it
+    if (promo.usedBy && promo.usedBy.includes(username.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Вы уже активировали этот промокод.' });
+    }
+
+    // 6. Apply rewards to user
+    let goldAdded = 0;
+    let itemsAdded = [];
+
+    // Parse user inventoryData
+    let inventory = { items: [] };
+    if (user.inventoryData) {
+      try {
+        inventory = JSON.parse(user.inventoryData);
+      } catch (e) {
+        inventory = { items: [] };
+      }
+    }
+
+    for (const reward of promo.rewards) {
+      if (reward.type === 'gold') {
+        user.gold = (user.gold || 0) + reward.count;
+        goldAdded += reward.count;
+      } else {
+        // Add skin item to inventoryData
+        const newItem = {
+          Name: reward.type,
+          IsEquipped: false,
+          IsNew: true,
+          StatTrack: { IsStatTrack: false, Kills: 0 },
+          Stickers: ["", "", "", ""],
+          Charm: "",
+          uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+        };
+        inventory.items.push(newItem);
+        itemsAdded.push(reward.type);
+      }
+    }
+
+    user.inventoryData = JSON.stringify(inventory);
+
+    // 7. Update promo code status
+    promo.currentActivations = (promo.currentActivations || 0) + 1;
+    if (!promo.usedBy) promo.usedBy = [];
+    promo.usedBy.push(username.toLowerCase());
+
+    // Save changes
+    await db.save(user);
+    await promoDb.save(promo);
+
+    console.log(`User ${username} redeemed promo ${promoCode}. Gold added: ${goldAdded}. Items: ${itemsAdded.join(', ')}`);
+
+    return res.json({
+      success: true,
+      message: 'Промокод успешно активирован!',
+      rewards: promo.rewards
+    });
+
+  } catch (error) {
+    console.error('Redeem promo error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
   }
 });
 
