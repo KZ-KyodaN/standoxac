@@ -59,7 +59,11 @@ const userSchema = new mongoose.Schema({
   deaths: { type: String, default: "0" },
   headshots: { type: String, default: "0" },
   avatar: { type: String, default: "" }, // Base64 string
-  inventoryData: { type: String, default: "" } // JSON string
+  inventoryData: { type: String, default: "" }, // JSON string
+  friends: { type: [String], default: [] },
+  friendRequests: { type: [String], default: [] },
+  blocked: { type: [String], default: [] },
+  activeRoomId: { type: String, default: "" }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -78,6 +82,19 @@ const db = {
     const users = readUsersLocal();
     const regex = new RegExp(`^${username}$`, 'i');
     return users.find(u => regex.test(u.username));
+  },
+
+  findByPlayerId: async (playerId) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await User.findOne({ playerId: playerId });
+      } catch (err) {
+        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const users = readUsersLocal();
+    return users.find(u => u.playerId === playerId);
   },
 
   create: async (userData) => {
@@ -237,7 +254,11 @@ app.post('/api/auth/register', async (req, res) => {
       deaths: "0",
       headshots: "0",
       avatar: "",
-      inventoryData: JSON.stringify(defaultInventory)
+      inventoryData: JSON.stringify(defaultInventory),
+      friends: [],
+      friendRequests: [],
+      blocked: [],
+      activeRoomId: ""
     };
 
     const savedUser = await db.create(newUser);
@@ -470,6 +491,237 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
   } catch (error) {
     console.error('Redeem promo error:', error);
     return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+
+function sanitizeUser(user) {
+  if (!user.friends) user.friends = [];
+  if (!user.friendRequests) user.friendRequests = [];
+  if (!user.blocked) user.blocked = [];
+  if (user.activeRoomId === undefined) user.activeRoomId = "";
+  return user;
+}
+
+// Endpoint: Get list of friends, requests, and blocked users
+app.post('/api/friends/list', async (req, res) => {
+  try {
+    const { playerId } = req.body;
+    if (!playerId) {
+      return res.status(400).json({ success: false, message: 'PlayerId is required.' });
+    }
+
+    const user = await db.findByPlayerId(playerId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    sanitizeUser(user);
+
+    const friendsProfiles = [];
+    for (const fId of user.friends) {
+      const f = await db.findByPlayerId(fId);
+      if (f) {
+        friendsProfiles.push({
+          username: f.username,
+          playerId: f.playerId,
+          activeRoomId: f.activeRoomId || "",
+          kills: f.kills || "0",
+          avatar: f.avatar || ""
+        });
+      }
+    }
+
+    const requestsProfiles = [];
+    for (const rId of user.friendRequests) {
+      const r = await db.findByPlayerId(rId);
+      if (r) {
+        requestsProfiles.push({
+          username: r.username,
+          playerId: r.playerId,
+          activeRoomId: r.activeRoomId || "",
+          kills: r.kills || "0",
+          avatar: r.avatar || ""
+        });
+      }
+    }
+
+    const blockedProfiles = [];
+    for (const bId of user.blocked) {
+      const b = await db.findByPlayerId(bId);
+      if (b) {
+        blockedProfiles.push({
+          username: b.username,
+          playerId: b.playerId,
+          activeRoomId: b.activeRoomId || "",
+          kills: b.kills || "0",
+          avatar: b.avatar || ""
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      friends: friendsProfiles,
+      friendRequests: requestsProfiles,
+      blocked: blockedProfiles
+    });
+
+  } catch (error) {
+    console.error('List friends error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Find a user profile and get relationship
+app.post('/api/friends/find', async (req, res) => {
+  try {
+    const { playerId, queryId } = req.body;
+    if (!playerId || !queryId) {
+      return res.status(400).json({ success: false, message: 'PlayerId and QueryId are required.' });
+    }
+
+    const requester = await db.findByPlayerId(playerId);
+    if (!requester) {
+      return res.status(404).json({ success: false, message: 'Requester not found.' });
+    }
+    sanitizeUser(requester);
+
+    const target = await db.findByPlayerId(queryId);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'User with specified ID not found.' });
+    }
+    sanitizeUser(target);
+
+    let relation = "none";
+    if (requester.friends.includes(queryId)) {
+      relation = "friend";
+    } else if (target.friendRequests.includes(playerId)) {
+      relation = "requested";
+    } else if (requester.blocked.includes(queryId)) {
+      relation = "blocked";
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        username: target.username,
+        playerId: target.playerId,
+        activeRoomId: target.activeRoomId || "",
+        kills: target.kills || "0",
+        avatar: target.avatar || ""
+      },
+      relation: relation
+    });
+
+  } catch (error) {
+    console.error('Find friend error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Social Action (Add, Accept, Decline, Remove, Block, Unblock)
+app.post('/api/friends/action', async (req, res) => {
+  try {
+    const { playerId, targetId, action } = req.body;
+    if (!playerId || !targetId || !action) {
+      return res.status(400).json({ success: false, message: 'Missing parameters.' });
+    }
+
+    const requester = await db.findByPlayerId(playerId);
+    const target = await db.findByPlayerId(targetId);
+
+    if (!requester || !target) {
+      return res.status(404).json({ success: false, message: 'Requester or Target user not found.' });
+    }
+
+    sanitizeUser(requester);
+    sanitizeUser(target);
+
+    if (action === 'add') {
+      if (target.blocked.includes(playerId)) {
+        return res.status(400).json({ success: false, message: 'This user has blocked you.' });
+      }
+
+      if (requester.blocked.includes(targetId)) {
+        requester.blocked = requester.blocked.filter(id => id !== targetId);
+      }
+
+      if (requester.friends.includes(targetId)) {
+        return res.status(400).json({ success: false, message: 'Already friends.' });
+      }
+
+      if (requester.friendRequests.includes(targetId)) {
+        requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
+        if (!requester.friends.includes(targetId)) requester.friends.push(targetId);
+        if (!target.friends.includes(playerId)) target.friends.push(playerId);
+      } else {
+        if (!target.friendRequests.includes(playerId)) {
+          target.friendRequests.push(playerId);
+        }
+      }
+    }
+    else if (action === 'accept') {
+      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
+      if (!requester.friends.includes(targetId)) requester.friends.push(targetId);
+      if (!target.friends.includes(playerId)) target.friends.push(playerId);
+    }
+    else if (action === 'decline') {
+      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
+      target.friendRequests = target.friendRequests.filter(id => id !== playerId);
+    }
+    else if (action === 'remove') {
+      requester.friends = requester.friends.filter(id => id !== targetId);
+      target.friends = target.friends.filter(id => id !== playerId);
+    }
+    else if (action === 'block') {
+      if (!requester.blocked.includes(targetId)) {
+        requester.blocked.push(targetId);
+      }
+      requester.friends = requester.friends.filter(id => id !== targetId);
+      target.friends = target.friends.filter(id => id !== playerId);
+      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
+      target.friendRequests = target.friendRequests.filter(id => id !== playerId);
+    }
+    else if (action === 'unblock') {
+      requester.blocked = requester.blocked.filter(id => id !== targetId);
+    }
+    else {
+      return res.status(400).json({ success: false, message: 'Invalid action.' });
+    }
+
+    await db.save(requester);
+    await db.save(target);
+
+    return res.json({ success: true, message: `Action ${action} completed successfully.` });
+
+  } catch (error) {
+    console.error('Execute action error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Update active room status
+app.post('/api/friends/update-room', async (req, res) => {
+  try {
+    const { playerId, activeRoomId } = req.body;
+    if (!playerId) {
+      return res.status(400).json({ success: false, message: 'PlayerId is required.' });
+    }
+
+    const user = await db.findByPlayerId(playerId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    sanitizeUser(user);
+    user.activeRoomId = activeRoomId || "";
+    await db.save(user);
+
+    return res.json({ success: true, message: 'Active room updated successfully.' });
+
+  } catch (error) {
+    console.error('Update room error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
 
