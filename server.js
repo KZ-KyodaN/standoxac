@@ -63,7 +63,9 @@ const userSchema = new mongoose.Schema({
   friends: { type: [String], default: [] },
   friendRequests: { type: [String], default: [] },
   blocked: { type: [String], default: [] },
-  activeRoomId: { type: String, default: "" }
+  activeRoomId: { type: String, default: "" },
+  clanId: { type: String, default: "" },
+  clanRole: { type: String, default: "" }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -214,7 +216,133 @@ async function seedDefaultPromocodes() {
     console.error('Error seeding default promo codes:', err);
   }
 }
+// Clan Model Schema (Mongoose)
+const clanSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  tag: { type: String, required: true },
+  avatarUrl: { type: String, default: "" },
+  description: { type: String, default: "" },
+  ownerId: { type: String, required: true },
+  members: [{
+    playerId: { type: String, required: true },
+    role: { type: String, default: "member" }
+  }],
+  pendingRequests: { type: [String], default: [] },
+  slotsLimit: { type: Number, default: 25 },
+  type: { type: String, default: "open" }
+});
 
+const Clan = mongoose.model('Clan', clanSchema);
+
+const clanDbFilePath = path.join(__dirname, 'clans.json');
+function readClansLocal() {
+  if (!fs.existsSync(clanDbFilePath)) {
+    fs.writeFileSync(clanDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(clanDbFilePath, 'utf8'));
+}
+function writeClansLocal(clans) {
+  fs.writeFileSync(clanDbFilePath, JSON.stringify(clans, null, 2));
+}
+
+const clanDb = {
+  findOne: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await Clan.findOne(query);
+      } catch (err) {
+        console.warn('Mongoose clan query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const clans = readClansLocal();
+    if (query.name) {
+      const regex = new RegExp(`^${query.name}$`, 'i');
+      return clans.find(c => regex.test(c.name));
+    }
+    if (query.tag) {
+      const regex = new RegExp(`^${query.tag}$`, 'i');
+      return clans.find(c => regex.test(c.tag));
+    }
+    if (query._id) {
+      return clans.find(c => c._id === query._id);
+    }
+    return null;
+  },
+
+  find: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await Clan.find(query);
+      } catch (err) {
+        console.warn('Mongoose clan query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const clans = readClansLocal();
+    if (query && query.$or) {
+      const term = query.$or[0].name.$regex.source;
+      const regex = new RegExp(term, 'i');
+      return clans.filter(c => regex.test(c.name) || regex.test(c.tag));
+    }
+    return clans;
+  },
+
+  create: async (clanData) => {
+    clanData._id = clanData._id || new mongoose.Types.ObjectId().toString();
+    if (!isUsingLocalJson) {
+      try {
+        const newClan = new Clan(clanData);
+        await newClan.save();
+        return newClan;
+      } catch (err) {
+        console.warn('Mongoose clan save failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const clans = readClansLocal();
+    clans.push(clanData);
+    writeClansLocal(clans);
+    return clanData;
+  },
+
+  save: async (clanData) => {
+    if (!isUsingLocalJson && clanData.save) {
+      try {
+        return await clanData.save();
+      } catch (err) {
+        console.warn('Mongoose clan save failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const clans = readClansLocal();
+    const idx = clans.findIndex(c => c._id.toString() === clanData._id.toString() || c.name.toLowerCase() === clanData.name.toLowerCase());
+    if (idx !== -1) {
+      clans[idx] = clanData;
+    } else {
+      clans.push(clanData);
+    }
+    writeClansLocal(clans);
+    return clanData;
+  },
+
+  deleteOne: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await Clan.deleteOne(query);
+      } catch (err) {
+        console.warn('Mongoose clan delete failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    let clans = readClansLocal();
+    if (query._id) {
+      clans = clans.filter(c => c._id.toString() !== query._id.toString());
+    }
+    writeClansLocal(clans);
+    return { deletedCount: 1 };
+  }
+};
 // Call seed function after some delay to allow MongoDB to connect
 setTimeout(seedDefaultPromocodes, 3000);
 
@@ -258,7 +386,9 @@ app.post('/api/auth/register', async (req, res) => {
       friends: [],
       friendRequests: [],
       blocked: [],
-      activeRoomId: ""
+      activeRoomId: "",
+      clanId: "",
+      clanRole: ""
     };
 
     const savedUser = await db.create(newUser);
@@ -499,6 +629,8 @@ function sanitizeUser(user) {
   if (!user.friendRequests) user.friendRequests = [];
   if (!user.blocked) user.blocked = [];
   if (user.activeRoomId === undefined) user.activeRoomId = "";
+  if (user.clanId === undefined || user.clanId === null) user.clanId = "";
+  if (user.clanRole === undefined || user.clanRole === null) user.clanRole = "";
   return user;
 }
 
@@ -722,6 +854,527 @@ app.post('/api/friends/update-room', async (req, res) => {
   } catch (error) {
     console.error('Update room error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// --- CLAN SYSTEM ENDPOINTS ---
+
+// 1. Create Clan
+app.post('/api/clan/create', async (req, res) => {
+  try {
+    const { playerId, name, tag, avatarUrl } = req.body;
+
+    if (!playerId || !name || !tag) {
+      return res.status(400).json({ success: false, message: 'Все поля обязательны.' });
+    }
+
+    // Tag validation: up to 5 chars, only English letters
+    const tagRegex = /^[A-Za-z]{1,5}$/;
+    if (!tagRegex.test(tag)) {
+      return res.status(400).json({ success: false, message: 'Тег должен быть от 1 до 5 символов и содержать только латинские буквы.' });
+    }
+
+    const user = await db.findByPlayerId(playerId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+    }
+    sanitizeUser(user);
+
+    if (user.clanId) {
+      return res.status(400).json({ success: false, message: 'Вы уже состоите в клане.' });
+    }
+
+    if (user.gold < 50000) {
+      return res.status(400).json({ success: false, message: 'Недостаточно золота для создания клана (требуется 50,000 голды).' });
+    }
+
+    // Check name uniqueness
+    const existingClan = await clanDb.findOne({ name: name });
+    if (existingClan) {
+      return res.status(400).json({ success: false, message: 'Клан с таким названием уже существует.' });
+    }
+
+    // Deduct gold
+    user.gold -= 50000;
+
+    const clanData = {
+      name: name,
+      tag: tag.toUpperCase(),
+      avatarUrl: avatarUrl || "",
+      description: "Добро пожаловать в наш клан!",
+      ownerId: playerId,
+      members: [{ playerId: playerId, role: 'leader' }],
+      pendingRequests: [],
+      slotsLimit: 25,
+      type: 'open'
+    };
+
+    const newClan = await clanDb.create(clanData);
+
+    user.clanId = newClan._id.toString();
+    user.clanRole = 'leader';
+
+    await db.save(user);
+
+    return res.json({
+      success: true,
+      message: 'Клан успешно создан!',
+      clan: newClan,
+      gold: user.gold
+    });
+
+  } catch (error) {
+    console.error('Create clan error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+
+// 2. Search Clans
+app.post('/api/clan/search', async (req, res) => {
+  try {
+    const { term } = req.body;
+    let query = {};
+    if (term) {
+      const cleanTerm = term.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      query = {
+        $or: [
+          { name: { $regex: new RegExp(cleanTerm, 'i') } },
+          { tag: { $regex: new RegExp(cleanTerm, 'i') } }
+        ]
+      };
+    }
+
+    const clans = await clanDb.find(query);
+    const result = clans.map(c => ({
+      _id: c._id,
+      name: c.name,
+      tag: c.tag,
+      avatarUrl: c.avatarUrl || "",
+      description: c.description || "",
+      memberCount: c.members ? c.members.length : 0,
+      slotsLimit: c.slotsLimit || 25,
+      type: c.type || 'open'
+    }));
+
+    return res.json({ success: true, clans: result });
+  } catch (error) {
+    console.error('Search clan error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+
+// 3. Clan Info
+app.post('/api/clan/info', async (req, res) => {
+  try {
+    const { playerId, clanId } = req.body;
+
+    let targetClanId = clanId;
+    if (playerId) {
+      const user = await db.findByPlayerId(playerId);
+      if (user) {
+        sanitizeUser(user);
+        targetClanId = user.clanId;
+      }
+    }
+
+    if (!targetClanId) {
+      return res.json({ success: true, inClan: false });
+    }
+
+    const clan = await clanDb.findOne({ _id: targetClanId });
+    if (!clan) {
+      // Clear user status if clan not found
+      if (playerId) {
+        const user = await db.findByPlayerId(playerId);
+        if (user) {
+          user.clanId = "";
+          user.clanRole = "";
+          await db.save(user);
+        }
+      }
+      return res.json({ success: true, inClan: false });
+    }
+
+    const membersWithProfile = [];
+    if (clan.members) {
+      for (const m of clan.members) {
+        const profile = await db.findByPlayerId(m.playerId);
+        if (profile) {
+          membersWithProfile.push({
+            playerId: m.playerId,
+            username: profile.username,
+            role: m.role || 'member',
+            kills: profile.kills || "0",
+            avatar: profile.avatar || ""
+          });
+        }
+      }
+    }
+
+    // Sort order: leader -> co-leader -> elder -> member
+    const roleWeight = { leader: 4, 'co-leader': 3, elder: 2, member: 1 };
+    membersWithProfile.sort((a, b) => (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0));
+
+    return res.json({
+      success: true,
+      inClan: true,
+      clan: {
+        _id: clan._id,
+        name: clan.name,
+        tag: clan.tag,
+        avatarUrl: clan.avatarUrl || "",
+        description: clan.description || "",
+        ownerId: clan.ownerId,
+        slotsLimit: clan.slotsLimit || 25,
+        type: clan.type || 'open',
+        members: membersWithProfile,
+        pendingRequests: clan.pendingRequests || []
+      }
+    });
+
+  } catch (error) {
+    console.error('Get clan info error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+
+// 4. Leaders of Clans
+app.post('/api/clan/leaders', async (req, res) => {
+  try {
+    const clans = await clanDb.find({});
+    const leaders = [];
+
+    for (const c of clans) {
+      let totalKills = 0;
+      if (c.members) {
+        for (const m of c.members) {
+          const profile = await db.findByPlayerId(m.playerId);
+          if (profile) {
+            totalKills += parseInt(profile.kills || "0", 10);
+          }
+        }
+      }
+      leaders.push({
+        _id: c._id,
+        name: c.name,
+        tag: c.tag,
+        avatarUrl: c.avatarUrl || "",
+        memberCount: c.members ? c.members.length : 0,
+        slotsLimit: c.slotsLimit || 25,
+        totalKills: totalKills
+      });
+    }
+
+    leaders.sort((a, b) => b.totalKills - a.totalKills);
+
+    return res.json({ success: true, leaders: leaders.slice(0, 15) });
+  } catch (error) {
+    console.error('Get clan leaders error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+
+// 5. Clan Actions
+app.post('/api/clan/action', async (req, res) => {
+  try {
+    const { playerId, action, targetId, value } = req.body;
+
+    if (!playerId || !action) {
+      return res.status(400).json({ success: false, message: 'Missing parameters.' });
+    }
+
+    const user = await db.findByPlayerId(playerId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+    }
+    sanitizeUser(user);
+
+    // ACTIONS FOR NON-CLAN MEMBERS
+    if (action === 'join' || action === 'request') {
+      if (user.clanId) {
+        return res.status(400).json({ success: false, message: 'Вы уже состоите в клане.' });
+      }
+
+      const targetClan = await clanDb.findOne({ _id: targetId });
+      if (!targetClan) {
+        return res.status(404).json({ success: false, message: 'Клан не найден.' });
+      }
+
+      if (targetClan.members.length >= targetClan.slotsLimit) {
+        return res.status(400).json({ success: false, message: 'В клане нет свободных мест.' });
+      }
+
+      if (action === 'join') {
+        if (targetClan.type !== 'open') {
+          return res.status(400).json({ success: false, message: 'В этот клан нельзя вступить без одобрения.' });
+        }
+        targetClan.members.push({ playerId: playerId, role: 'member' });
+        user.clanId = targetClan._id.toString();
+        user.clanRole = 'member';
+        await clanDb.save(targetClan);
+        await db.save(user);
+        return res.json({ success: true, message: 'Вы успешно вступили в клан!' });
+      } else {
+        if (targetClan.type !== 'request') {
+          return res.status(400).json({ success: false, message: 'В этот клан нельзя отправить заявку.' });
+        }
+        if (!targetClan.pendingRequests) targetClan.pendingRequests = [];
+        if (!targetClan.pendingRequests.includes(playerId)) {
+          targetClan.pendingRequests.push(playerId);
+          await clanDb.save(targetClan);
+        }
+        return res.json({ success: true, message: 'Заявка на вступление успешно отправлена!' });
+      }
+    }
+
+    if (action === 'cancel_request') {
+      const targetClan = await clanDb.findOne({ _id: targetId });
+      if (targetClan) {
+        if (targetClan.pendingRequests) {
+          targetClan.pendingRequests = targetClan.pendingRequests.filter(id => id !== playerId);
+          await clanDb.save(targetClan);
+        }
+      }
+      return res.json({ success: true, message: 'Заявка отменена.' });
+    }
+
+    // ACTIONS FOR CLAN MEMBERS
+    if (!user.clanId) {
+      return res.status(400).json({ success: false, message: 'Вы не состоите в клане.' });
+    }
+
+    const clan = await clanDb.findOne({ _id: user.clanId });
+    if (!clan) {
+      user.clanId = "";
+      user.clanRole = "";
+      await db.save(user);
+      return res.status(404).json({ success: false, message: 'Ваш клан не найден.' });
+    }
+
+    const myRole = user.clanRole;
+
+    if (action === 'leave') {
+      if (myRole === 'leader') {
+        if (clan.members.length > 1) {
+          return res.status(400).json({ success: false, message: 'Вы должны передать лидерство перед тем как покинуть клан.' });
+        }
+        // If leader is the only member, disband
+        await clanDb.deleteOne({ _id: clan._id });
+        user.clanId = "";
+        user.clanRole = "";
+        await db.save(user);
+        return res.json({ success: true, message: 'Клан распущен.' });
+      }
+
+      clan.members = clan.members.filter(m => m.playerId !== playerId);
+      await clanDb.save(clan);
+
+      user.clanId = "";
+      user.clanRole = "";
+      await db.save(user);
+      return res.json({ success: true, message: 'Вы покинули клан.' });
+    }
+
+    if (action === 'disband') {
+      if (myRole !== 'leader') {
+        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
+      }
+
+      // Clear clan fields for all members
+      for (const m of clan.members) {
+        const u = await db.findByPlayerId(m.playerId);
+        if (u) {
+          u.clanId = "";
+          u.clanRole = "";
+          await db.save(u);
+        }
+      }
+
+      await clanDb.deleteOne({ _id: clan._id });
+      return res.json({ success: true, message: 'Клан распущен лидером.' });
+    }
+
+    if (action === 'upgrade_slots') {
+      const slotsToBuy = parseInt(value, 10);
+      if (isNaN(slotsToBuy) || slotsToBuy <= 0) {
+        return res.status(400).json({ success: false, message: 'Некорректное количество слотов.' });
+      }
+
+      if (clan.slotsLimit + slotsToBuy > 100) {
+        return res.status(400).json({ success: false, message: 'Максимальный лимит слотов — 100.' });
+      }
+
+      const cost = slotsToBuy * 1000;
+      if (user.gold < cost) {
+        return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
+      }
+
+      user.gold -= cost;
+      clan.slotsLimit += slotsToBuy;
+
+      await clanDb.save(clan);
+      await db.save(user);
+
+      return res.json({ success: true, message: `Лимит слотов успешно расширен до ${clan.slotsLimit}!`, gold: user.gold, slotsLimit: clan.slotsLimit });
+    }
+
+    // ROLE/MANAGEMENT PERMISSIONS CHECK
+    const isAuthorized = (myRole === 'leader' || myRole === 'co-leader');
+
+    if (action === 'update_settings') {
+      if (!isAuthorized) {
+        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
+      }
+
+      const { type, description, avatarUrl } = value || {};
+      if (type) {
+        if (!['open', 'closed', 'request'].includes(type)) {
+          return res.status(400).json({ success: false, message: 'Некорректный тип входа.' });
+        }
+        clan.type = type;
+      }
+      if (description !== undefined) {
+        clan.description = description;
+      }
+      if (avatarUrl !== undefined) {
+        clan.avatarUrl = avatarUrl;
+      }
+
+      await clanDb.save(clan);
+      return res.json({ success: true, message: 'Настройки клана успешно обновлены!' });
+    }
+
+    if (action === 'accept' || action === 'decline') {
+      if (!isAuthorized) {
+        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
+      }
+
+      clan.pendingRequests = (clan.pendingRequests || []).filter(id => id !== targetId);
+
+      if (action === 'accept') {
+        if (clan.members.length >= clan.slotsLimit) {
+          return res.status(400).json({ success: false, message: 'В клане нет свободных мест.' });
+        }
+        const targetUser = await db.findByPlayerId(targetId);
+        if (targetUser) {
+          sanitizeUser(targetUser);
+          if (targetUser.clanId) {
+            await clanDb.save(clan);
+            return res.status(400).json({ success: false, message: 'Игрок уже состоит в другом клане.' });
+          }
+          clan.members.push({ playerId: targetId, role: 'member' });
+          targetUser.clanId = clan._id.toString();
+          targetUser.clanRole = 'member';
+          await db.save(targetUser);
+        }
+      }
+
+      await clanDb.save(clan);
+      return res.json({ success: true, message: `Заявка игрока ${action === 'accept' ? 'принята' : 'отклонена'}.` });
+    }
+
+    // ACTIONS REQUIRING TARGET MEMBERS
+    const targetMember = clan.members.find(m => m.playerId === targetId);
+    if (!targetMember) {
+      return res.status(404).json({ success: false, message: 'Участник не найден в вашем клане.' });
+    }
+
+    const targetUser = await db.findByPlayerId(targetId);
+
+    if (action === 'kick') {
+      const canKick = (myRole === 'leader') || (myRole === 'co-leader' && targetMember.role !== 'leader' && targetMember.role !== 'co-leader');
+      if (!canKick) {
+        return res.status(403).json({ success: false, message: 'Недостаточно прав для изгнания этого игрока.' });
+      }
+
+      clan.members = clan.members.filter(m => m.playerId !== targetId);
+      await clanDb.save(clan);
+
+      if (targetUser) {
+        targetUser.clanId = "";
+        targetUser.clanRole = "";
+        await db.save(targetUser);
+      }
+
+      return res.json({ success: true, message: 'Игрок успешно изгнан из клана.' });
+    }
+
+    if (action === 'promote') {
+      if (targetMember.role === 'member') {
+        if (myRole !== 'leader' && myRole !== 'co-leader') {
+          return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
+        }
+        targetMember.role = 'elder';
+      } else if (targetMember.role === 'elder') {
+        if (myRole !== 'leader') {
+          return res.status(403).json({ success: false, message: 'Только Лидер может назначать Заместителей.' });
+        }
+        targetMember.role = 'co-leader';
+      } else {
+        return res.status(400).json({ success: false, message: 'Нельзя повысить роль далее.' });
+      }
+
+      await clanDb.save(clan);
+      if (targetUser) {
+        targetUser.clanRole = targetMember.role;
+        await db.save(targetUser);
+      }
+
+      return res.json({ success: true, message: `Игрок повышен до ${targetMember.role}.` });
+    }
+
+    if (action === 'demote') {
+      if (targetMember.role === 'co-leader') {
+        if (myRole !== 'leader') {
+          return res.status(403).json({ success: false, message: 'Только Лидер может понижать Заместителей.' });
+        }
+        targetMember.role = 'elder';
+      } else if (targetMember.role === 'elder') {
+        if (myRole !== 'leader' && myRole !== 'co-leader') {
+          return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
+        }
+        targetMember.role = 'member';
+      } else {
+        return res.status(400).json({ success: false, message: 'Нельзя понизить роль далее.' });
+      }
+
+      await clanDb.save(clan);
+      if (targetUser) {
+        targetUser.clanRole = targetMember.role;
+        await db.save(targetUser);
+      }
+
+      return res.json({ success: true, message: `Игрок понижен до ${targetMember.role}.` });
+    }
+
+    if (action === 'transfer') {
+      if (myRole !== 'leader') {
+        return res.status(403).json({ success: false, message: 'Только Лидер может передать клан.' });
+      }
+
+      const myMember = clan.members.find(m => m.playerId === playerId);
+      if (myMember) myMember.role = 'co-leader';
+      user.clanRole = 'co-leader';
+
+      targetMember.role = 'leader';
+      clan.ownerId = targetId;
+
+      await clanDb.save(clan);
+      await db.save(user);
+
+      if (targetUser) {
+        targetUser.clanRole = 'leader';
+        await db.save(targetUser);
+      }
+
+      return res.json({ success: true, message: 'Лидерство клана успешно передано!' });
+    }
+
+    return res.status(400).json({ success: false, message: 'Invalid action.' });
+
+  } catch (error) {
+    console.error('Execute clan action error:', error);
+    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
   }
 });
 
