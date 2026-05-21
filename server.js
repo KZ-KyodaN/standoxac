@@ -65,7 +65,9 @@ const userSchema = new mongoose.Schema({
   blocked: { type: [String], default: [] },
   activeRoomId: { type: String, default: "" },
   clanId: { type: String, default: "" },
-  clanRole: { type: String, default: "" }
+  clanRole: { type: String, default: "" },
+  status: { type: String, default: "regular" },
+  nicknameColor: { type: String, default: "" }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -450,7 +452,9 @@ app.post('/api/auth/login', async (req, res) => {
         deaths: user.deaths,
         headshots: user.headshots,
         avatar: user.avatar,
-        inventoryData: user.inventoryData
+        inventoryData: user.inventoryData,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || ""
       }
     });
 
@@ -484,7 +488,9 @@ app.post('/api/auth/profile', async (req, res) => {
         deaths: user.deaths,
         headshots: user.headshots,
         avatar: user.avatar,
-        inventoryData: user.inventoryData
+        inventoryData: user.inventoryData,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || ""
       }
     });
 
@@ -497,7 +503,7 @@ app.post('/api/auth/profile', async (req, res) => {
 // Endpoint: Sync Profile Data
 app.post('/api/auth/sync', async (req, res) => {
   try {
-    const { username, gold, kills, deaths, headshots, avatar, inventoryData } = req.body;
+    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor } = req.body;
 
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required for sync.' });
@@ -514,6 +520,8 @@ app.post('/api/auth/sync', async (req, res) => {
     if (headshots !== undefined) user.headshots = headshots;
     if (avatar !== undefined) user.avatar = avatar;
     if (inventoryData !== undefined) user.inventoryData = inventoryData;
+    if (status !== undefined) user.status = status;
+    if (nicknameColor !== undefined) user.nicknameColor = nicknameColor;
 
     await db.save(user);
     console.log(`Synced data for user: ${user.username}`);
@@ -1019,7 +1027,9 @@ app.post('/api/clan/info', async (req, res) => {
             username: profile.username,
             role: m.role || 'member',
             kills: profile.kills || "0",
-            avatar: profile.avatar || ""
+            avatar: profile.avatar || "",
+            status: profile.status || "regular",
+            nicknameColor: profile.nicknameColor || ""
           });
         }
       }
