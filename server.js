@@ -229,7 +229,9 @@ const clanSchema = new mongoose.Schema({
   }],
   pendingRequests: { type: [String], default: [] },
   slotsLimit: { type: Number, default: 25 },
-  type: { type: String, default: "open" }
+  type: { type: String, default: "open" },
+  isPremium: { type: Boolean, default: false },
+  tagColor: { type: String, default: "#bfbfbf" }
 });
 
 const Clan = mongoose.model('Clan', clanSchema);
@@ -906,7 +908,9 @@ app.post('/api/clan/create', async (req, res) => {
       members: [{ playerId: playerId, role: 'leader' }],
       pendingRequests: [],
       slotsLimit: 25,
-      type: 'open'
+      type: 'open',
+      isPremium: false,
+      tagColor: '#bfbfbf'
     };
 
     const newClan = await clanDb.create(clanData);
@@ -1028,7 +1032,9 @@ app.post('/api/clan/info', async (req, res) => {
         slotsLimit: clan.slotsLimit || 25,
         type: clan.type || 'open',
         members: membersWithProfile,
-        pendingRequests: clan.pendingRequests || []
+        pendingRequests: clan.pendingRequests || [],
+        isPremium: clan.isPremium || false,
+        tagColor: clan.tagColor || '#bfbfbf'
       }
     });
 
@@ -1218,6 +1224,24 @@ app.post('/api/clan/action', async (req, res) => {
       return res.json({ success: true, message: `Лимит слотов успешно расширен до ${clan.slotsLimit}!`, gold: user.gold, slotsLimit: clan.slotsLimit });
     }
 
+    if (action === 'buy_premium') {
+      if (myRole !== 'leader') {
+        return res.status(403).json({ success: false, message: 'Только Лидер может приобрести Premium статус для клана.' });
+      }
+      if (clan.isPremium) {
+        return res.status(400).json({ success: false, message: 'Клан уже имеет Premium статус.' });
+      }
+      const cost = 25000; // Premium costs 25k Gold for testing
+      if (user.gold < cost) {
+        return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
+      }
+      user.gold -= cost;
+      clan.isPremium = true;
+      await clanDb.save(clan);
+      await db.save(user);
+      return res.json({ success: true, message: 'Премиум подписка для клана успешно активирована!', gold: user.gold });
+    }
+
     // ROLE/MANAGEMENT PERMISSIONS CHECK
     const isAuthorized = (myRole === 'leader' || myRole === 'co-leader');
 
@@ -1226,7 +1250,19 @@ app.post('/api/clan/action', async (req, res) => {
         return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
       }
 
-      const { type, description, avatarUrl } = value || {};
+      let parsedValue = {};
+      if (typeof value === 'string') {
+        try {
+          parsedValue = JSON.parse(value);
+        } catch (e) {
+          parsedValue = {};
+        }
+      } else if (typeof value === 'object') {
+        parsedValue = value || {};
+      }
+
+      const { type, description, avatarUrl, tagColor } = parsedValue;
+
       if (type) {
         if (!['open', 'closed', 'request'].includes(type)) {
           return res.status(400).json({ success: false, message: 'Некорректный тип входа.' });
@@ -1238,6 +1274,16 @@ app.post('/api/clan/action', async (req, res) => {
       }
       if (avatarUrl !== undefined) {
         clan.avatarUrl = avatarUrl;
+      }
+      if (tagColor !== undefined && tagColor !== "") {
+        if (!clan.isPremium) {
+          return res.status(400).json({ success: false, message: 'Изменение цвета тега доступно только для Premium кланов.' });
+        }
+        const hexColorRegex = /^#[0-9A-Fa-f]{6}$/;
+        if (!hexColorRegex.test(tagColor)) {
+          return res.status(400).json({ success: false, message: 'Некорректный формат цвета (должен быть #HEX, например #FFCC00).' });
+        }
+        clan.tagColor = tagColor;
       }
 
       await clanDb.save(clan);
