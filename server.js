@@ -231,7 +231,8 @@ const clanSchema = new mongoose.Schema({
   slotsLimit: { type: Number, default: 25 },
   type: { type: String, default: "open" },
   isPremium: { type: Boolean, default: false },
-  tagColor: { type: String, default: "#bfbfbf" }
+  tagColor: { type: String, default: "#bfbfbf" },
+  premiumExpiresAt: { type: Date, default: null }
 });
 
 const Clan = mongoose.model('Clan', clanSchema);
@@ -910,7 +911,8 @@ app.post('/api/clan/create', async (req, res) => {
       slotsLimit: 25,
       type: 'open',
       isPremium: false,
-      tagColor: '#bfbfbf'
+      tagColor: '#bfbfbf',
+      premiumExpiresAt: null
     };
 
     const newClan = await clanDb.create(clanData);
@@ -999,6 +1001,14 @@ app.post('/api/clan/info', async (req, res) => {
       return res.json({ success: true, inClan: false });
     }
 
+    // Check if premium subscription has expired
+    const now = new Date();
+    if (clan.isPremium && clan.premiumExpiresAt && new Date(clan.premiumExpiresAt) < now) {
+      clan.isPremium = false;
+      clan.tagColor = '#bfbfbf';
+      await clanDb.save(clan);
+    }
+
     const membersWithProfile = [];
     if (clan.members) {
       for (const m of clan.members) {
@@ -1034,7 +1044,8 @@ app.post('/api/clan/info', async (req, res) => {
         members: membersWithProfile,
         pendingRequests: clan.pendingRequests || [],
         isPremium: clan.isPremium || false,
-        tagColor: clan.tagColor || '#bfbfbf'
+        tagColor: clan.tagColor || '#bfbfbf',
+        premiumExpiresAt: clan.premiumExpiresAt || null
       }
     });
 
@@ -1226,20 +1237,33 @@ app.post('/api/clan/action', async (req, res) => {
 
     if (action === 'buy_premium') {
       if (myRole !== 'leader') {
-        return res.status(403).json({ success: false, message: 'Только Лидер может приобрести Premium статус для клана.' });
+        return res.status(403).json({ success: false, message: 'Только Лидер может приобрести/продлить Premium статус для клана.' });
       }
-      if (clan.isPremium) {
-        return res.status(400).json({ success: false, message: 'Клан уже имеет Premium статус.' });
-      }
-      const cost = 25000; // Premium costs 25k Gold for testing
+      const cost = 25000;
       if (user.gold < cost) {
         return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
       }
       user.gold -= cost;
+
+      const now = new Date();
+      let expireDate;
+      if (clan.isPremium && clan.premiumExpiresAt && new Date(clan.premiumExpiresAt) > now) {
+        // Extend existing subscription by 30 days
+        expireDate = new Date(clan.premiumExpiresAt);
+        expireDate.setDate(expireDate.getDate() + 30);
+      } else {
+        // Start new subscription for 30 days
+        expireDate = new Date();
+        expireDate.setDate(expireDate.getDate() + 30);
+      }
+
       clan.isPremium = true;
+      clan.premiumExpiresAt = expireDate;
       await clanDb.save(clan);
       await db.save(user);
-      return res.json({ success: true, message: 'Премиум подписка для клана успешно активирована!', gold: user.gold });
+
+      const expiryFormatted = expireDate.toLocaleDateString('ru-RU');
+      return res.json({ success: true, message: `Премиум успешно оформлен/продлен до ${expiryFormatted}!`, gold: user.gold });
     }
 
     // ROLE/MANAGEMENT PERMISSIONS CHECK
