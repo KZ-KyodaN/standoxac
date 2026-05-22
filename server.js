@@ -245,6 +245,8 @@ const tradeOfferSchema = new mongoose.Schema({
   receiverPlayerId: { type: String, required: true },
   senderItems: [String], // Array of uids
   receiverItems: [String], // Array of uids from receiver
+  senderItemNames: [String],
+  receiverItemNames: [String],
   status: { type: String, default: "pending" }, // pending, accepted, declined, cancelled
   createdAt: { type: Date, default: Date.now }
 });
