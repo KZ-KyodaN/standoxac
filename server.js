@@ -244,6 +244,7 @@ const tradeOfferSchema = new mongoose.Schema({
   senderUsername: { type: String, required: true },
   receiverPlayerId: { type: String, required: true },
   senderItems: [String], // Array of uids
+  receiverItems: [String], // Array of uids from receiver
   status: { type: String, default: "pending" }, // pending, accepted, declined, cancelled
   createdAt: { type: Date, default: Date.now }
 });
@@ -1610,8 +1611,8 @@ app.post('/api/clan/action', async (req, res) => {
 
 app.post('/api/trades/create', async (req, res) => {
   try {
-    const { username, targetPlayerId, itemUids } = req.body;
-    if (!username || !targetPlayerId || !itemUids || !Array.isArray(itemUids) || itemUids.length === 0) {
+    const { username, targetPlayerId, itemUids, receiverItemUids } = req.body;
+    if (!username || !targetPlayerId) {
       return res.status(400).json({ success: false, message: 'Неверные параметры трейда.' });
     }
 
@@ -1630,15 +1631,21 @@ app.post('/api/trades/create', async (req, res) => {
       try { senderInventory = JSON.parse(sender.inventoryData); } catch (e) {}
     }
 
+    let receiverInventory = { items: [] };
+    if (receiver.inventoryData) {
+      try { receiverInventory = JSON.parse(receiver.inventoryData); } catch (e) {}
+    }
+
     // Check if sender has all items and they are NOT already in trade
     const itemsToTrade = [];
-    for (const uid of itemUids) {
+    const safeItemUids = itemUids || [];
+    for (const uid of safeItemUids) {
       const item = senderInventory.items.find(i => i.uid === uid);
       if (!item) {
-        return res.status(400).json({ success: false, message: `Вещь не найдена.` });
+        return res.status(400).json({ success: false, message: 'Ваша вещь не найдена.' });
       }
       if (item.isTradeFrozen) {
-        return res.status(400).json({ success: false, message: 'Одна или несколько вещей уже находятся в другом трейде.' });
+        return res.status(400).json({ success: false, message: 'Одна или несколько ваших вещей уже находятся в другом трейде.' });
       }
       if (item.IsEquipped) {
          return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
@@ -1646,7 +1653,19 @@ app.post('/api/trades/create', async (req, res) => {
       itemsToTrade.push(item);
     }
 
-    // Freeze items
+    // Quick check if receiver has the requested items (do not freeze them yet)
+    const safeReceiverUids = receiverItemUids || [];
+    for (const uid of safeReceiverUids) {
+      const item = receiverInventory.items.find(i => i.uid === uid);
+      if (!item) {
+        return res.status(400).json({ success: false, message: 'Запрошенная вещь у друга не найдена.' });
+      }
+      if (item.IsEquipped) {
+        return res.status(400).json({ success: false, message: 'Друг сейчас надел эту вещь.' });
+      }
+    }
+
+    // Freeze sender items
     for (const item of itemsToTrade) {
       item.isTradeFrozen = true;
     }
@@ -1657,7 +1676,8 @@ app.post('/api/trades/create', async (req, res) => {
     const offer = await tradeDb.create({
       senderUsername: sender.username,
       receiverPlayerId: receiver.playerId,
-      senderItems: itemUids,
+      senderItems: safeItemUids,
+      receiverItems: safeReceiverUids,
       status: 'pending'
     });
 
@@ -1673,9 +1693,7 @@ app.get('/api/trades/pending', async (req, res) => {
     const { username, playerId } = req.query;
     if (!username || !playerId) return res.status(400).json({ success: false, message: 'Missing params' });
 
-    // Incoming trades
     const incoming = await tradeDb.find({ receiverPlayerId: playerId, status: 'pending' });
-    // Outgoing trades
     const outgoing = await tradeDb.find({ senderUsername: username, status: 'pending' });
 
     return res.json({ success: true, incoming, outgoing });
@@ -1703,18 +1721,56 @@ app.post('/api/trades/accept', async (req, res) => {
     let receiverInv = { items: [] };
     if (receiver.inventoryData) try { receiverInv = JSON.parse(receiver.inventoryData); } catch (e) {}
 
-    // Move items
-    const itemsToMove = [];
+    // 1. Move items from Sender to Receiver
+    const itemsToMoveToReceiver = [];
     senderInv.items = senderInv.items.filter(item => {
       if (trade.senderItems.includes(item.uid)) {
         item.isTradeFrozen = false;
-        itemsToMove.push(item);
+        itemsToMoveToReceiver.push(item);
         return false; // Remove from sender
       }
       return true; // Keep in sender
     });
 
-    receiverInv.items.push(...itemsToMove);
+    if (itemsToMoveToReceiver.length !== trade.senderItems.length) {
+      // Revert Sender items and cancel trade
+      senderInv.items.push(...itemsToMoveToReceiver); // put them back
+      sender.inventoryData = JSON.stringify(senderInv);
+      await db.save(sender);
+      trade.status = 'cancelled';
+      await tradeDb.save(trade);
+      return res.status(400).json({ success: false, message: 'Вещи отправителя больше недоступны.' });
+    }
+
+    // 2. Check and Move items from Receiver to Sender
+    const safeReceiverItems = trade.receiverItems || [];
+    const itemsToMoveToSender = [];
+    receiverInv.items = receiverInv.items.filter(item => {
+      if (safeReceiverItems.includes(item.uid)) {
+        if (item.isTradeFrozen || item.IsEquipped) {
+           return true; // Cannot move this item right now
+        }
+        item.isTradeFrozen = false;
+        itemsToMoveToSender.push(item);
+        return false; // Remove from receiver
+      }
+      return true; // Keep in receiver
+    });
+
+    if (itemsToMoveToSender.length !== safeReceiverItems.length) {
+      // Revert EVERYTHING
+      senderInv.items.push(...itemsToMoveToReceiver);
+      receiverInv.items.push(...itemsToMoveToSender);
+      sender.inventoryData = JSON.stringify(senderInv);
+      await db.save(sender);
+      trade.status = 'cancelled';
+      await tradeDb.save(trade);
+      return res.status(400).json({ success: false, message: 'Ваши запрашиваемые вещи недоступны для обмена.' });
+    }
+
+    // 3. Complete swap
+    receiverInv.items.push(...itemsToMoveToReceiver);
+    senderInv.items.push(...itemsToMoveToSender);
 
     sender.inventoryData = JSON.stringify(senderInv);
     receiver.inventoryData = JSON.stringify(receiverInv);
@@ -1761,9 +1817,31 @@ app.post('/api/trades/decline', async (req, res) => {
     trade.status = action === 'cancel' ? 'cancelled' : 'declined';
     await tradeDb.save(trade);
 
-    return res.json({ success: true, message: action === 'cancel' ? 'Трейд отменен.' : 'Трейд отклонен.' });
+    return res.json({ success: true, message: `Трейд ${action === 'cancel' ? 'отменен' : 'отклонен'}.` });
   } catch (err) {
-    console.error('Trade decline/cancel error:', err);
+    console.error('Trade decline error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Endpoint: Get Player Inventory Info for Trade
+app.get('/api/inventory/:playerId', async (req, res) => {
+  try {
+    const playerId = req.params.playerId;
+    const targetUser = await db.findByPlayerId(playerId);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    let inventory = { items: [] };
+    if (targetUser.inventoryData) {
+      try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) {}
+    }
+
+    // Filter out equipped and frozen items from what we send back to ensure accurate picking
+    const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
+
+    return res.json({ success: true, inventoryData: JSON.stringify({ items: availableItems }) });
+  } catch(e) {
+    console.error('Inventory GET error:', e);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
