@@ -239,6 +239,17 @@ const clanSchema = new mongoose.Schema({
 
 const Clan = mongoose.model('Clan', clanSchema);
 
+// TradeOffer Model Schema (Mongoose)
+const tradeOfferSchema = new mongoose.Schema({
+  senderUsername: { type: String, required: true },
+  receiverPlayerId: { type: String, required: true },
+  senderItems: [String], // Array of uids
+  status: { type: String, default: "pending" }, // pending, accepted, declined, cancelled
+  createdAt: { type: Date, default: Date.now }
+});
+
+const TradeOffer = mongoose.model('TradeOffer', tradeOfferSchema);
+
 const clanDbFilePath = path.join(__dirname, 'clans.json');
 function readClansLocal() {
   if (!fs.existsSync(clanDbFilePath)) {
@@ -249,6 +260,99 @@ function readClansLocal() {
 function writeClansLocal(clans) {
   fs.writeFileSync(clanDbFilePath, JSON.stringify(clans, null, 2));
 }
+
+const tradeDbFilePath = path.join(__dirname, 'trades.json');
+function readTradesLocal() {
+  if (!fs.existsSync(tradeDbFilePath)) {
+    fs.writeFileSync(tradeDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(tradeDbFilePath, 'utf8'));
+}
+function writeTradesLocal(trades) {
+  fs.writeFileSync(tradeDbFilePath, JSON.stringify(trades, null, 2));
+}
+
+const tradeDb = {
+  find: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await TradeOffer.find(query);
+      } catch (err) {
+        console.warn('Mongoose trade query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const trades = readTradesLocal();
+    return trades.filter(t => {
+      let match = true;
+      for (const key in query) {
+        if (query[key] && query[key].$in) {
+            if (!query[key].$in.includes(t[key])) match = false;
+        } else if (t[key] !== query[key]) {
+          match = false;
+        }
+      }
+      return match;
+    });
+  },
+
+  findOne: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await TradeOffer.findOne(query);
+      } catch (err) {
+        console.warn('Mongoose trade query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const trades = readTradesLocal();
+    return trades.find(t => {
+      let match = true;
+      for (const key in query) {
+        if (t[key] !== query[key]) match = false;
+      }
+      return match;
+    });
+  },
+
+  create: async (tradeData) => {
+    if (!isUsingLocalJson) {
+      try {
+        const newTrade = new TradeOffer(tradeData);
+        await newTrade.save();
+        return newTrade;
+      } catch (err) {
+        console.warn('Mongoose trade save failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const trades = readTradesLocal();
+    const newTrade = { ...tradeData, _id: Math.random().toString(36).substr(2, 9), createdAt: new Date() };
+    trades.push(newTrade);
+    writeTradesLocal(trades);
+    return newTrade;
+  },
+
+  save: async (tradeData) => {
+    if (!isUsingLocalJson && tradeData.save) {
+      try {
+        return await tradeData.save();
+      } catch (err) {
+        console.warn('Mongoose trade save failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const trades = readTradesLocal();
+    const idx = trades.findIndex(t => t._id === tradeData._id);
+    if (idx !== -1) {
+      trades[idx] = tradeData;
+    } else {
+      trades.push(tradeData);
+    }
+    writeTradesLocal(trades);
+    return tradeData;
+  }
+};
 
 const clanDb = {
   findOne: async (query) => {
@@ -1500,6 +1604,167 @@ app.post('/api/clan/action', async (req, res) => {
   } catch (error) {
     console.error('Execute clan action error:', error);
     return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+  }
+});
+// --- TRADE SYSTEM ENDPOINTS ---
+
+app.post('/api/trades/create', async (req, res) => {
+  try {
+    const { username, targetPlayerId, itemUids } = req.body;
+    if (!username || !targetPlayerId || !itemUids || !Array.isArray(itemUids) || itemUids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Неверные параметры трейда.' });
+    }
+
+    const sender = await db.findOne(username);
+    if (!sender) return res.status(404).json({ success: false, message: 'Отправитель не найден.' });
+
+    const receiver = await db.findByPlayerId(targetPlayerId);
+    if (!receiver) return res.status(404).json({ success: false, message: 'Получатель не найден.' });
+    
+    if (sender.playerId === receiver.playerId) {
+      return res.status(400).json({ success: false, message: 'Нельзя отправить трейд самому себе.' });
+    }
+
+    let senderInventory = { items: [] };
+    if (sender.inventoryData) {
+      try { senderInventory = JSON.parse(sender.inventoryData); } catch (e) {}
+    }
+
+    // Check if sender has all items and they are NOT already in trade
+    const itemsToTrade = [];
+    for (const uid of itemUids) {
+      const item = senderInventory.items.find(i => i.uid === uid);
+      if (!item) {
+        return res.status(400).json({ success: false, message: `Вещь не найдена.` });
+      }
+      if (item.isTradeFrozen) {
+        return res.status(400).json({ success: false, message: 'Одна или несколько вещей уже находятся в другом трейде.' });
+      }
+      if (item.IsEquipped) {
+         return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
+      }
+      itemsToTrade.push(item);
+    }
+
+    // Freeze items
+    for (const item of itemsToTrade) {
+      item.isTradeFrozen = true;
+    }
+    sender.inventoryData = JSON.stringify(senderInventory);
+    await db.save(sender);
+
+    // Create trade offer
+    const offer = await tradeDb.create({
+      senderUsername: sender.username,
+      receiverPlayerId: receiver.playerId,
+      senderItems: itemUids,
+      status: 'pending'
+    });
+
+    return res.json({ success: true, message: 'Трейд успешно отправлен!', trade: offer });
+  } catch (err) {
+    console.error('Trade create error:', err);
+    return res.status(500).json({ success: false, message: 'Ошибка сервера при создании трейда.' });
+  }
+});
+
+app.get('/api/trades/pending', async (req, res) => {
+  try {
+    const { username, playerId } = req.query;
+    if (!username || !playerId) return res.status(400).json({ success: false, message: 'Missing params' });
+
+    // Incoming trades
+    const incoming = await tradeDb.find({ receiverPlayerId: playerId, status: 'pending' });
+    // Outgoing trades
+    const outgoing = await tradeDb.find({ senderUsername: username, status: 'pending' });
+
+    return res.json({ success: true, incoming, outgoing });
+  } catch (err) {
+    console.error('Trade pending error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/trades/accept', async (req, res) => {
+  try {
+    const { username, tradeId } = req.body;
+    const trade = await tradeDb.findOne({ _id: tradeId });
+    if (!trade || trade.status !== 'pending') return res.status(400).json({ success: false, message: 'Трейд не найден или уже завершен.' });
+
+    const receiver = await db.findOne(username);
+    if (!receiver || receiver.playerId !== trade.receiverPlayerId) return res.status(403).json({ success: false, message: 'Нет доступа.' });
+
+    const sender = await db.findOne(trade.senderUsername);
+    if (!sender) return res.status(404).json({ success: false, message: 'Отправитель не найден.' });
+
+    let senderInv = { items: [] };
+    if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) {}
+    
+    let receiverInv = { items: [] };
+    if (receiver.inventoryData) try { receiverInv = JSON.parse(receiver.inventoryData); } catch (e) {}
+
+    // Move items
+    const itemsToMove = [];
+    senderInv.items = senderInv.items.filter(item => {
+      if (trade.senderItems.includes(item.uid)) {
+        item.isTradeFrozen = false;
+        itemsToMove.push(item);
+        return false; // Remove from sender
+      }
+      return true; // Keep in sender
+    });
+
+    receiverInv.items.push(...itemsToMove);
+
+    sender.inventoryData = JSON.stringify(senderInv);
+    receiver.inventoryData = JSON.stringify(receiverInv);
+    
+    await db.save(sender);
+    await db.save(receiver);
+
+    trade.status = 'accepted';
+    await tradeDb.save(trade);
+
+    return res.json({ success: true, message: 'Трейд успешно принят!' });
+  } catch (err) {
+    console.error('Trade accept error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.post('/api/trades/decline', async (req, res) => {
+  try {
+    const { username, tradeId, action } = req.body; // action can be 'decline' or 'cancel'
+    const trade = await tradeDb.findOne({ _id: tradeId });
+    if (!trade || trade.status !== 'pending') return res.status(400).json({ success: false, message: 'Трейд не найден или уже завершен.' });
+
+    const user = await db.findOne(username);
+    if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+
+    if (action === 'cancel' && trade.senderUsername !== username) return res.status(403).json({ success: false, message: 'Нет доступа.' });
+    if (action === 'decline' && trade.receiverPlayerId !== user.playerId) return res.status(403).json({ success: false, message: 'Нет доступа.' });
+
+    const sender = await db.findOne(trade.senderUsername);
+    if (sender) {
+      let senderInv = { items: [] };
+      if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch(e){}
+      
+      senderInv.items.forEach(item => {
+        if (trade.senderItems.includes(item.uid)) {
+          item.isTradeFrozen = false;
+        }
+      });
+      sender.inventoryData = JSON.stringify(senderInv);
+      await db.save(sender);
+    }
+
+    trade.status = action === 'cancel' ? 'cancelled' : 'declined';
+    await tradeDb.save(trade);
+
+    return res.json({ success: true, message: action === 'cancel' ? 'Трейд отменен.' : 'Трейд отклонен.' });
+  } catch (err) {
+    console.error('Trade decline/cancel error:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
