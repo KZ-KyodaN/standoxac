@@ -1666,11 +1666,14 @@ app.post('/api/trades/create', async (req, res) => {
     }
 
     // Freeze sender items
+    const senderItemNames = itemsToTrade.map(i => i.Name);
     for (const item of itemsToTrade) {
       item.isTradeFrozen = true;
     }
     sender.inventoryData = JSON.stringify(senderInventory);
     await db.save(sender);
+
+    const receiverItemNames = safeReceiverUids.map(uid => receiverInventory.items.find(i => i.uid === uid).Name);
 
     // Create trade offer
     const offer = await tradeDb.create({
@@ -1678,6 +1681,8 @@ app.post('/api/trades/create', async (req, res) => {
       receiverPlayerId: receiver.playerId,
       senderItems: safeItemUids,
       receiverItems: safeReceiverUids,
+      senderItemNames: senderItemNames,
+      receiverItemNames: receiverItemNames,
       status: 'pending'
     });
 
@@ -1839,7 +1844,7 @@ app.get('/api/inventory/:playerId', async (req, res) => {
     // Filter out equipped and frozen items from what we send back to ensure accurate picking
     const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
 
-    return res.json({ success: true, inventoryData: JSON.stringify({ items: availableItems }) });
+    return res.json({ success: true, inventory: availableItems });
   } catch(e) {
     console.error('Inventory GET error:', e);
     return res.status(500).json({ success: false, message: 'Server error' });
