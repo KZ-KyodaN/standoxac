@@ -518,7 +518,20 @@ app.post('/api/auth/sync', async (req, res) => {
     if (kills !== undefined) user.kills = kills;
     if (deaths !== undefined) user.deaths = deaths;
     if (headshots !== undefined) user.headshots = headshots;
-    if (avatar !== undefined) user.avatar = avatar;
+    if (avatar !== undefined) {
+      if (avatar.length > 7500000) {
+        return res.status(400).json({ success: false, message: 'Аватарка не должна превышать 5 МБ.' });
+      }
+      
+      const isGif = avatar.startsWith('R0lGOD'); // Base64 signature for GIF89a / GIF87a
+      const currentStatus = status !== undefined ? status : user.status;
+      
+      if (isGif && currentStatus !== 'premium' && currentStatus !== 'developer') {
+        return res.status(403).json({ success: false, message: 'GIF аватарки доступны только для Premium пользователей.' });
+      }
+      
+      user.avatar = avatar;
+    }
     if (inventoryData !== undefined) user.inventoryData = inventoryData;
     if (status !== undefined) user.status = status;
     if (nicknameColor !== undefined) user.nicknameColor = nicknameColor;
@@ -533,6 +546,38 @@ app.post('/api/auth/sync', async (req, res) => {
 
   } catch (error) {
     console.error('Sync error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Get User Avatar Fast
+app.get('/api/avatar/:username', async (req, res) => {
+  try {
+    const username = req.params.username;
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username is required.' });
+    }
+    
+    // Support querying by playerId or username
+    let user = null;
+    if (username.length === 12 && !isNaN(username)) { // simple heuristics for numeric player ID
+      user = await db.findByPlayerId(username);
+    }
+    
+    if (!user) {
+      user = await db.findOne(username);
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    return res.json({
+      success: true,
+      avatar: user.avatar || ""
+    });
+  } catch (error) {
+    console.error('Get avatar error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
