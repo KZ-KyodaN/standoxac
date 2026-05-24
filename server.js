@@ -2106,9 +2106,21 @@ app.get('/api/trades/pending', async (req, res) => {
   }
 });
 
+// Anti-Dupe In-Memory Lock for Trades
+const activeTradeLocks = new Set();
+
 app.post('/api/trades/accept', async (req, res) => {
+  const { username, tradeId } = req.body;
+  
+  if (!tradeId) return res.status(400).json({ success: false, message: 'Trade ID missing.' });
+
+  // RACE CONDITION DUPE PROTECTION
+  if (activeTradeLocks.has(tradeId)) {
+    return res.status(400).json({ success: false, message: 'Трейд уже обрабатывается сервером. Пожалуйста, подождите.' });
+  }
+  activeTradeLocks.add(tradeId);
+
   try {
-    const { username, tradeId } = req.body;
     const trade = await tradeDb.findOne({ _id: tradeId });
     if (!trade || trade.status !== 'pending') return res.status(400).json({ success: false, message: 'Трейд не найден или уже завершен.' });
 
@@ -2188,6 +2200,9 @@ app.post('/api/trades/accept', async (req, res) => {
   } catch (err) {
     console.error('Trade accept error:', err);
     return res.status(500).json({ success: false, message: 'Server error' });
+  } finally {
+    // Release Lock
+    activeTradeLocks.delete(tradeId);
   }
 });
 
