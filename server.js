@@ -574,13 +574,16 @@ app.post('/api/auth/login', async (req, res) => {
 // Endpoint: Get Profile (Fetch latest data)
 app.post('/api/auth/profile', async (req, res) => {
   try {
-    const { username } = req.body;
+    const { username, playerId } = req.body;
 
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required.' });
+    let user;
+    if (playerId) {
+      user = await db.findByPlayerId(playerId);
+    } else if (username) {
+      user = await db.findOne(username);
+    } else {
+      return res.status(400).json({ success: false, message: 'Username or PlayerId is required.' });
     }
-
-    const user = await db.findOne(username);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
@@ -610,7 +613,7 @@ app.post('/api/auth/profile', async (req, res) => {
 // Endpoint: Sync Profile Data
 app.post('/api/auth/sync', async (req, res) => {
   try {
-    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor } = req.body;
+    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor, newUsername } = req.body;
 
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required for sync.' });
@@ -619,6 +622,24 @@ app.post('/api/auth/sync', async (req, res) => {
     const user = await db.findOne(username);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
+      if (newUsername.length < 3 || newUsername.length > 16) {
+        return res.status(400).json({ success: false, message: 'Имя должно быть от 3 до 16 символов.' });
+      }
+      for (let i = 0; i < newUsername.length; i++) {
+        const char = newUsername[i];
+        if (!(/[a-zA-Z0-9]/).test(char)) {
+          return res.status(400).json({ success: false, message: 'Спец. символы в имени запрещены.' });
+        }
+      }
+
+      const existingUser = await db.findOne(newUsername);
+      if (existingUser) {
+        return res.status(400).json({ success: false, message: 'Имя уже занято.' });
+      }
+      user.username = newUsername;
     }
 
     if (gold !== undefined) user.gold = gold;
@@ -1187,8 +1208,8 @@ app.post('/api/clan/info', async (req, res) => {
       }
     }
 
-    // Sort order: leader -> co-leader -> elder -> member
-    const roleWeight = { leader: 4, 'co-leader': 3, elder: 2, member: 1 };
+    // Sort order: leader -> co-leader -> member
+    const roleWeight = { leader: 3, 'co-leader': 2, member: 1 };
     membersWithProfile.sort((a, b) => (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0));
 
     return res.json({
@@ -1533,11 +1554,6 @@ app.post('/api/clan/action', async (req, res) => {
 
     if (action === 'promote') {
       if (targetMember.role === 'member') {
-        if (myRole !== 'leader' && myRole !== 'co-leader') {
-          return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
-        }
-        targetMember.role = 'elder';
-      } else if (targetMember.role === 'elder') {
         if (myRole !== 'leader') {
           return res.status(403).json({ success: false, message: 'Только Лидер может назначать Заместителей.' });
         }
@@ -1552,18 +1568,13 @@ app.post('/api/clan/action', async (req, res) => {
         await db.save(targetUser);
       }
 
-      return res.json({ success: true, message: `Игрок повышен до ${targetMember.role}.` });
+      return res.json({ success: true, message: `Игрок повышен до Зам. Главы.` });
     }
 
     if (action === 'demote') {
       if (targetMember.role === 'co-leader') {
         if (myRole !== 'leader') {
           return res.status(403).json({ success: false, message: 'Только Лидер может понижать Заместителей.' });
-        }
-        targetMember.role = 'elder';
-      } else if (targetMember.role === 'elder') {
-        if (myRole !== 'leader' && myRole !== 'co-leader') {
-          return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
         }
         targetMember.role = 'member';
       } else {
@@ -1576,12 +1587,15 @@ app.post('/api/clan/action', async (req, res) => {
         await db.save(targetUser);
       }
 
-      return res.json({ success: true, message: `Игрок понижен до ${targetMember.role}.` });
+      return res.json({ success: true, message: `Игрок понижен до Участника.` });
     }
 
     if (action === 'transfer') {
       if (myRole !== 'leader') {
         return res.status(403).json({ success: false, message: 'Только Лидер может передать клан.' });
+      }
+      if (targetMember.role !== 'co-leader') {
+        return res.status(400).json({ success: false, message: 'Передать клан можно только Заместителю.' });
       }
 
       const myMember = clan.members.find(m => m.playerId === playerId);
