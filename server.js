@@ -588,6 +588,16 @@ app.post('/api/auth/profile', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
     return res.json({
       success: true,
       user: {
@@ -600,7 +610,9 @@ app.post('/api/auth/profile', async (req, res) => {
         avatar: user.avatar,
         inventoryData: user.inventoryData,
         status: user.status || "regular",
-        nicknameColor: user.nicknameColor || ""
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor
       }
     });
 
