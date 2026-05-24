@@ -548,6 +548,16 @@ app.post('/api/auth/login', async (req, res) => {
 
     console.log(`User logged in: ${user.username}`);
 
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
     return res.json({
       success: true,
       message: 'Login successful!',
@@ -561,7 +571,9 @@ app.post('/api/auth/login', async (req, res) => {
         avatar: user.avatar,
         inventoryData: user.inventoryData,
         status: user.status || "regular",
-        nicknameColor: user.nicknameColor || ""
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor
       }
     });
 
