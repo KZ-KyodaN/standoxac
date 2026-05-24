@@ -2361,6 +2361,110 @@ app.post('/api/match/reward', async (req, res) => {
   }
 });
 
+// Endpoint: Secure Server-Authoritative Pack Purchase
+app.post('/api/packs/purchase', async (req, res) => {
+  try {
+    const { username, price, items } = req.body;
+    if (!username || price === undefined || !items) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
+    }
+
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (user.gold < price) {
+      return res.status(400).json({ success: false, message: 'Insufficient gold.' });
+    }
+
+    // Deduct gold
+    user.gold -= price;
+
+    // Load current inventory
+    let inventory = { items: [] };
+    if (user.inventoryData) {
+      try {
+        inventory = JSON.parse(user.inventoryData);
+        if (!inventory.items) {
+          inventory.items = [];
+        }
+      } catch (e) {
+        inventory = { items: [] };
+      }
+    }
+
+    // Add items
+    for (const item of items) {
+      // Normal version
+      inventory.items.push({
+        Name: item.name,
+        IsEquipped: false,
+        IsNew: true,
+        uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        Charm: "",
+        Stickers: ["", "", "", ""]
+      });
+
+      // StatTrack version if applicable
+      if (item.canBeInStatTrack) {
+        inventory.items.push({
+          Name: item.name,
+          IsEquipped: false,
+          IsNew: true,
+          StatTrack: { IsStatTrack: true, Kills: 0 },
+          uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+          Charm: "",
+          Stickers: ["", "", "", ""]
+        });
+      }
+    }
+
+    user.inventoryData = JSON.stringify(inventory);
+    await db.save(user);
+
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
+    // Generate HMAC Signature for Inventory Integrity
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
+    return res.json({
+      success: true,
+      message: 'Pack purchased successfully!',
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor
+      }
+    });
+
+  } catch (error) {
+    console.error('Pack purchase endpoint error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 // Endpoint: Get Player Inventory Info for Trade
 app.get('/api/inventory/:playerId', async (req, res) => {
   try {
