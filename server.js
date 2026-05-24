@@ -2242,6 +2242,125 @@ app.post('/api/trades/decline', async (req, res) => {
   }
 });
 
+// Endpoint: Secure Server-Authoritative Match Rewards
+const CHEAP_SKINS = [
+  "AKR12_Aurora",
+  "AKR12_Carbon",
+  "AKR12_PixelCamouflage",
+  "AKR_Carbon",
+  "G22_PixelCamouflage",
+  "G22_Nest"
+];
+
+app.post('/api/match/reward', async (req, res) => {
+  try {
+    const { username, playerId } = req.body;
+    let user;
+    if (playerId) {
+      user = await db.findByPlayerId(playerId);
+    } else if (username) {
+      user = await db.findOne(username);
+    } else {
+      return res.status(400).json({ success: false, message: 'Username or PlayerId is required.' });
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const roll = Math.random();
+    let rewardType = "nothing";
+    let rolledGold = 0;
+    let rolledSkin = null;
+
+    if (roll < 0.1) {
+      rewardType = "skin";
+      rolledSkin = CHEAP_SKINS[Math.floor(Math.random() * CHEAP_SKINS.length)];
+      
+      let inventory = { items: [] };
+      if (user.inventoryData) {
+        try {
+          inventory = JSON.parse(user.inventoryData);
+          if (!inventory.items) {
+            inventory.items = [];
+          }
+        } catch (e) {
+          inventory = { items: [] };
+        }
+      }
+      
+      const newItem = {
+        Name: rolledSkin,
+        IsEquipped: false,
+        IsNew: true,
+        uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+        Charm: "",
+        Stickers: ["", "", "", ""]
+      };
+      
+      inventory.items.push(newItem);
+      user.inventoryData = JSON.stringify(inventory);
+      
+    } else if (roll < 0.8) {
+      rewardType = "gold";
+      rolledGold = Math.floor(Math.random() * (500 - 50 + 1)) + 50;
+      user.gold = (user.gold || 0) + rolledGold;
+    }
+
+    await db.save(user);
+
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
+    // Generate HMAC Signature for Inventory Integrity
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
+    let msg = "Только удача!";
+    if (rewardType === "gold") {
+      msg = `Вы выиграли ${rolledGold} золота!`;
+    } else if (rewardType === "skin") {
+      msg = `Вы выиграли скин: ${rolledSkin}!`;
+    }
+
+    return res.json({
+      success: true,
+      message: msg,
+      rewardType: rewardType,
+      gold: rolledGold,
+      skinName: rolledSkin,
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor
+      }
+    });
+
+  } catch (error) {
+    console.error('Match reward endpoint error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 // Endpoint: Get Player Inventory Info for Trade
 app.get('/api/inventory/:playerId', async (req, res) => {
   try {
