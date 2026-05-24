@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -36,6 +37,42 @@ function readPromocodesLocal() {
 }
 function writePromocodesLocal(promos) {
   fs.writeFileSync(promocodeDbFilePath, JSON.stringify(promos, null, 2));
+}
+
+// Local JSON Bans Setup
+const banDbFilePath = path.join(__dirname, 'bans.json');
+function readBansLocal() {
+  if (!fs.existsSync(banDbFilePath)) {
+    fs.writeFileSync(banDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(banDbFilePath, 'utf8'));
+}
+function writeBansLocal(bans) {
+  fs.writeFileSync(banDbFilePath, JSON.stringify(bans, null, 2));
+}
+
+// Local JSON Security Logs Setup
+const logDbFilePath = path.join(__dirname, 'security_logs.json');
+function readLogsLocal() {
+  if (!fs.existsSync(logDbFilePath)) {
+    fs.writeFileSync(logDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(logDbFilePath, 'utf8'));
+}
+function writeLogsLocal(logs) {
+  fs.writeFileSync(logDbFilePath, JSON.stringify(logs, null, 2));
+}
+
+// Local JSON Transaction Receipts Setup
+const receiptDbFilePath = path.join(__dirname, 'receipts.json');
+function readReceiptsLocal() {
+  if (!fs.existsSync(receiptDbFilePath)) {
+    fs.writeFileSync(receiptDbFilePath, JSON.stringify([]));
+  }
+  return JSON.parse(fs.readFileSync(receiptDbFilePath, 'utf8'));
+}
+function writeReceiptsLocal(receipts) {
+  fs.writeFileSync(receiptDbFilePath, JSON.stringify(receipts, null, 2));
 }
 
 let isUsingLocalJson = false;
@@ -253,6 +290,119 @@ const tradeOfferSchema = new mongoose.Schema({
 
 const TradeOffer = mongoose.model('TradeOffer', tradeOfferSchema);
 
+// Ban Model Schema
+const banSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  hwid: { type: String, required: true },
+  reason: { type: String, required: true },
+  severity: { type: Number, required: true },
+  expiresAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now }
+});
+const Ban = mongoose.model('Ban', banSchema);
+
+// Security Log Model Schema
+const securityLogSchema = new mongoose.Schema({
+  userId: { type: String, required: true },
+  hwid: { type: String },
+  violationType: { type: String, required: true },
+  severity: { type: Number, required: true },
+  details: { type: String },
+  timestamp: { type: Date, default: Date.now }
+});
+const SecurityLog = mongoose.model('SecurityLog', securityLogSchema);
+
+// Transaction Receipt Model Schema (Anti-Replay)
+const transactionReceiptSchema = new mongoose.Schema({
+  requestId: { type: String, required: true, unique: true },
+  userId: { type: String, required: true },
+  action: { type: String, required: true },
+  amount: { type: Number, required: true },
+  timestamp: { type: Date, default: Date.now }
+});
+const TransactionReceipt = mongoose.model('TransactionReceipt', transactionReceiptSchema);
+
+const banDb = {
+  findOne: async (query) => {
+    if (!isUsingLocalJson) {
+      try {
+        return await Ban.findOne(query);
+      } catch (err) {
+        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
+        isUsingLocalJson = true;
+      }
+    }
+    const bans = readBansLocal();
+    return bans.find(b => {
+      let match = true;
+      if (query.$or) {
+        match = query.$or.some(cond => {
+          for (const key in cond) {
+            if (b[key] !== cond[key]) return false;
+          }
+          return true;
+        });
+      } else {
+        for (const key in query) {
+          if (b[key] !== query[key]) match = false;
+        }
+      }
+      return match;
+    });
+  },
+  create: async (data) => {
+    if (!isUsingLocalJson) {
+      try {
+        const b = new Ban(data);
+        await b.save();
+        return b;
+      } catch (err) {
+        isUsingLocalJson = true;
+      }
+    }
+    const bans = readBansLocal();
+    bans.push(data);
+    writeBansLocal(bans);
+    return data;
+  }
+};
+
+const logDb = {
+  createMany: async (logs) => {
+    if (!isUsingLocalJson) {
+      try {
+        await SecurityLog.insertMany(logs);
+        return true;
+      } catch (err) {
+        isUsingLocalJson = true;
+      }
+    }
+    const localLogs = readLogsLocal();
+    localLogs.push(...logs);
+    writeLogsLocal(localLogs);
+    return true;
+  }
+};
+
+const receiptDb = {
+  findOne: async (query) => {
+    if (!isUsingLocalJson) {
+      try { return await TransactionReceipt.findOne(query); } catch (e) { isUsingLocalJson = true; }
+    }
+    const receipts = readReceiptsLocal();
+    return receipts.find(r => r.requestId === query.requestId);
+  },
+  create: async (data) => {
+    if (!isUsingLocalJson) {
+      try { const r = new TransactionReceipt(data); await r.save(); return r; } catch (e) { isUsingLocalJson = true; }
+    }
+    const receipts = readReceiptsLocal();
+    receipts.push(data);
+    writeReceiptsLocal(receipts);
+    return data;
+  }
+};
+
 const clanDbFilePath = path.join(__dirname, 'clans.json');
 function readClansLocal() {
   if (!fs.existsSync(clanDbFilePath)) {
@@ -464,6 +614,195 @@ app.use((req, res, next) => {
   next();
 });
 
+// Endpoint: Check Ban Status
+app.post('/api/v1/auth/check-ban', async (req, res) => {
+  try {
+    const { userId, hwid } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'User ID is required.' });
+
+    const activeBan = await banDb.findOne({
+      $or: [{ userId: userId }, { hwid: hwid }],
+      $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }]
+    });
+
+    if (activeBan) {
+      return res.json({
+        IsBanned: true,
+        Reason: activeBan.reason,
+        ExpiresAt: activeBan.expiresAt ? activeBan.expiresAt.toISOString() : null
+      });
+    }
+
+    res.json({ IsBanned: false });
+  } catch (error) {
+    console.error('Check ban error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Security Log Batch
+app.post('/api/v1/security/log-batch', async (req, res) => {
+  try {
+    const { logs } = req.body;
+    if (!logs || !Array.isArray(logs)) return res.status(400).send("Invalid logs");
+
+    await logDb.createMany(logs);
+
+    // Auto-Ban logic for critical violations
+    for (const log of logs) {
+      if (log.severity >= 2) { // Critical
+        await banDb.create({
+          userId: log.userId,
+          hwid: log.hwid,
+          reason: `Auto-Ban: Detected ${log.violationType}`,
+          severity: 3,
+          expiresAt: null
+        });
+        console.log(`[SECURITY] Auto-Banned User ${log.userId} for ${log.violationType}`);
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Log batch error:', error);
+    res.status(500).send("Error saving log");
+  }
+});
+
+// Endpoint: Secure Economy Reward
+app.post('/api/v1/economy/reward', async (req, res) => {
+  try {
+    const { username, requestId, matchId, stats } = req.body;
+    if (!username || !requestId || !stats) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
+    }
+
+    // 1. Replay Protection: Check if requestId already processed
+    const existingReceipt = await receiptDb.findOne({ requestId: requestId });
+    if (existingReceipt) {
+      return res.status(400).json({ success: false, message: 'Duplicate transaction (Replay detected).' });
+    }
+
+    // 2. Fetch User
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    // 3. Server-Side Reward Calculation (NEVER trust client's requested gold)
+    // Formula: 15 gold per kill, +50 for win
+    let calculatedReward = 0;
+    if (stats.kills && stats.kills > 0) {
+      const validKills = Math.min(stats.kills, 50); // Cap max kills per match
+      calculatedReward += validKills * 15;
+    }
+    if (stats.win) {
+      calculatedReward += 50;
+    }
+
+    // 4. Apply atomic transaction (Simulated for Local JSON, Mongoose handles atomic doc saves nicely here)
+    user.gold = (user.gold || 0) + calculatedReward;
+    await db.save(user);
+
+    // 5. Store Receipt
+    await receiptDb.create({
+      requestId: requestId,
+      userId: user.playerId,
+      action: 'REWARD_MATCH_END',
+      amount: calculatedReward
+    });
+
+    console.log(`[ECONOMY] Granted ${calculatedReward} gold to ${username} for match ${matchId}.`);
+    return res.json({ success: true, newBalance: user.gold, rewardAdded: calculatedReward });
+  } catch (error) {
+    console.error('Reward error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Secure Economy Purchase
+app.post('/api/v1/economy/purchase', async (req, res) => {
+  try {
+    const { username, requestId, itemId } = req.body;
+    if (!username || !requestId || !itemId) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
+    }
+
+    const existingReceipt = await receiptDb.findOne({ requestId: requestId });
+    if (existingReceipt) {
+      return res.status(400).json({ success: false, message: 'Duplicate transaction (Replay detected).' });
+    }
+
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    // Server-Side Pricing Catalog (Mock)
+    const Catalog = {
+      "AKR12_Aurora": 5000,
+      "M4_Samurai": 12000,
+      "Karambit_Gold": 50000,
+      "G22_Nest": 1500
+    };
+
+    const price = Catalog[itemId];
+    if (price === undefined) {
+      return res.status(400).json({ success: false, message: 'Item not found in catalog.' });
+    }
+
+    if (user.gold < price) {
+      return res.status(400).json({ success: false, message: 'Insufficient gold.' });
+    }
+
+    // Execution
+    user.gold -= price;
+
+    let inventory = { items: [] };
+    if (user.inventoryData) {
+      try { inventory = JSON.parse(user.inventoryData); } catch (e) {}
+    }
+
+    const newItem = {
+      Name: itemId,
+      IsEquipped: false,
+      IsNew: true,
+      StatTrack: { IsStatTrack: false, Kills: 0 },
+      Stickers: ["", "", "", ""],
+      Charm: "",
+      uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+    };
+    inventory.items.push(newItem);
+    
+    user.inventoryData = JSON.stringify(inventory);
+    await db.save(user);
+
+    await receiptDb.create({
+      requestId: requestId,
+      userId: user.playerId,
+      action: 'PURCHASE_ITEM',
+      amount: -price
+    });
+
+    // HMAC Signature
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(user.inventoryData);
+    const signature = hmac.digest('hex');
+
+    console.log(`[ECONOMY] User ${username} purchased ${itemId} for ${price} gold.`);
+
+    return res.json({ 
+      success: true, 
+      newBalance: user.gold, 
+      inventoryData: user.inventoryData,
+      inventorySignature: signature
+    });
+  } catch (error) {
+    console.error('Purchase error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 // Endpoint: Register
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -558,6 +897,12 @@ app.post('/api/auth/login', async (req, res) => {
       }
     }
 
+    // Generate HMAC Signature for Inventory Integrity
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
     return res.json({
       success: true,
       message: 'Login successful!',
@@ -569,7 +914,8 @@ app.post('/api/auth/login', async (req, res) => {
         deaths: user.deaths,
         headshots: user.headshots,
         avatar: user.avatar,
-        inventoryData: user.inventoryData,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
@@ -610,6 +956,12 @@ app.post('/api/auth/profile', async (req, res) => {
       }
     }
 
+    // Generate HMAC Signature for Inventory Integrity
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
     return res.json({
       success: true,
       user: {
@@ -620,7 +972,8 @@ app.post('/api/auth/profile', async (req, res) => {
         deaths: user.deaths,
         headshots: user.headshots,
         avatar: user.avatar,
-        inventoryData: user.inventoryData,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
@@ -666,7 +1019,9 @@ app.post('/api/auth/sync', async (req, res) => {
       user.username = newUsername;
     }
 
-    if (gold !== undefined) user.gold = gold;
+    // ANTI-CHEAT: Client is NO LONGER allowed to overwrite their Gold balance!
+    // if (gold !== undefined) user.gold = gold;
+    
     if (kills !== undefined) user.kills = kills;
     if (deaths !== undefined) user.deaths = deaths;
     if (headshots !== undefined) user.headshots = headshots;
@@ -684,7 +1039,10 @@ app.post('/api/auth/sync', async (req, res) => {
       
       user.avatar = avatar;
     }
-    if (inventoryData !== undefined) user.inventoryData = inventoryData;
+    
+    // ANTI-CHEAT: Client is NO LONGER allowed to spoof their inventory data!
+    // if (inventoryData !== undefined) user.inventoryData = inventoryData;
+    
     if (status !== undefined) user.status = status;
     if (nicknameColor !== undefined) user.nicknameColor = nicknameColor;
 
