@@ -3148,3 +3148,37 @@ app.post('/api/market/sell', async (req, res) => {
   } catch (error) {
     console.error('Market sell error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Get Player Inventory Info for Trade
+app.get('/api/inventory/:playerId', async (req, res) => {
+  try {
+    const playerId = req.params.playerId;
+    const targetUser = await db.findByPlayerId(playerId);
+    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    let inventory = { items: [] };
+    if (targetUser.inventoryData) {
+      try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) { }
+    }
+
+    // Filter out equipped and frozen items from what we send back to ensure accurate picking
+    const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
+
+    return res.json({ success: true, inventory: availableItems });
+  } catch (e) {
+    console.error('Inventory GET error:', e);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date() });
+});
+
+app.listen(PORT, () => {
+  console.log(`StandWeyz Account API Server is running on port ${PORT}`);
+  console.log(`Fallback JSON database path: ${dbFilePath}`);
+});
