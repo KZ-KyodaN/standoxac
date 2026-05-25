@@ -2525,7 +2525,7 @@ app.post('/api/trades/accept', async (req, res) => {
     const itemsToMoveToSender = [];
     receiverInv.items = receiverInv.items.filter(item => {
       if (safeReceiverItems.includes(item.uid)) {
-        if (item.isTradeFrozen || item.IsEquipped) {
+        if (item.isTradeFrozen) {
           return true; // Cannot move this item right now
         }
         item.isTradeFrozen = false;
