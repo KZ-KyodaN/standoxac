@@ -2672,8 +2672,25 @@ app.post('/api/packs/purchase', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    if (user.gold < price) {
-      return res.status(400).json({ success: false, message: 'Insufficient gold.' });
+    let computedPrice = 0;
+    for (const item of items) {
+      if (!item || !item.name) continue;
+      const name = item.name.toLowerCase();
+      if (name.includes('case') || name.includes('box')) {
+        let itemPrice = 100;
+        if (name.includes('origin') && name.includes('case')) {
+          itemPrice = 1000;
+        } else if (name.includes('furious') && name.includes('case')) {
+          itemPrice = 1000;
+        } else if (name.includes('rival') && name.includes('case')) {
+          itemPrice = 1000;
+        }
+        computedPrice += itemPrice;
+      }
+    }
+
+    if (user.gold < computedPrice) {
+      return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
     }
 
     // Anti-cheat: verify no blocked skins are being purchased
@@ -2684,7 +2701,7 @@ app.post('/api/packs/purchase', async (req, res) => {
     }
 
     // Deduct gold
-    user.gold -= price;
+    user.gold -= computedPrice;
 
     // Load current inventory
     let inventory = { items: [] };
