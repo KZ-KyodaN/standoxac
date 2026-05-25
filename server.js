@@ -104,7 +104,8 @@ const userSchema = new mongoose.Schema({
   clanId: { type: String, default: "" },
   clanRole: { type: String, default: "" },
   status: { type: String, default: "regular" },
-  nicknameColor: { type: String, default: "" }
+  nicknameColor: { type: String, default: "" },
+  premiumExpiresAt: { type: Date, default: null }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -112,30 +113,44 @@ const User = mongoose.model('User', userSchema);
 // DB Wrapper for handling transparent fallback
 const db = {
   findOne: async (username) => {
+    let user;
     if (!isUsingLocalJson) {
       try {
-        return await User.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
+        user = await User.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
       } catch (err) {
         console.warn('Mongoose query failed, falling back to JSON db:', err.message);
         isUsingLocalJson = true;
       }
     }
-    const users = readUsersLocal();
-    const regex = new RegExp(`^${username}$`, 'i');
-    return users.find(u => regex.test(u.username));
+    if (isUsingLocalJson) {
+      const users = readUsersLocal();
+      const regex = new RegExp(`^${username}$`, 'i');
+      user = users.find(u => regex.test(u.username));
+    }
+    if (user) {
+      user = await checkUserPremium(user);
+    }
+    return user;
   },
 
   findByPlayerId: async (playerId) => {
+    let user;
     if (!isUsingLocalJson) {
       try {
-        return await User.findOne({ playerId: playerId });
+        user = await User.findOne({ playerId: playerId });
       } catch (err) {
         console.warn('Mongoose query failed, falling back to JSON db:', err.message);
         isUsingLocalJson = true;
       }
     }
-    const users = readUsersLocal();
-    return users.find(u => u.playerId === playerId);
+    if (isUsingLocalJson) {
+      const users = readUsersLocal();
+      user = users.find(u => u.playerId === playerId);
+    }
+    if (user) {
+      user = await checkUserPremium(user);
+    }
+    return user;
   },
 
   create: async (userData) => {
@@ -175,6 +190,20 @@ const db = {
     return userData;
   }
 };
+
+async function checkUserPremium(user) {
+  if (user && user.status === 'premium' && user.premiumExpiresAt) {
+    const now = new Date();
+    if (new Date(user.premiumExpiresAt) < now) {
+      user.status = 'regular';
+      user.premiumExpiresAt = null;
+      user.nicknameColor = '';
+      await db.save(user);
+      console.log(`[PREMIUM] Subscription expired for user ${user.username}. Reverted to regular.`);
+    }
+  }
+  return user;
+}
 
 // Promocode Model Schema (Mongoose)
 const promocodeSchema = new mongoose.Schema({
@@ -839,7 +868,10 @@ app.post('/api/auth/register', async (req, res) => {
       blocked: [],
       activeRoomId: "",
       clanId: "",
-      clanRole: ""
+      clanRole: "",
+      status: "regular",
+      nicknameColor: "",
+      premiumExpiresAt: null
     };
 
     const savedUser = await db.create(newUser);
@@ -856,7 +888,10 @@ app.post('/api/auth/register', async (req, res) => {
         deaths: savedUser.deaths,
         headshots: savedUser.headshots,
         avatar: savedUser.avatar,
-        inventoryData: savedUser.inventoryData
+        inventoryData: savedUser.inventoryData,
+        status: savedUser.status || "regular",
+        nicknameColor: savedUser.nicknameColor || "",
+        premiumExpiresAt: savedUser.premiumExpiresAt || null
       }
     });
 
@@ -919,7 +954,8 @@ app.post('/api/auth/login', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
 
@@ -977,7 +1013,8 @@ app.post('/api/auth/profile', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
 
@@ -1043,19 +1080,138 @@ app.post('/api/auth/sync', async (req, res) => {
     // ANTI-CHEAT: Client is NO LONGER allowed to spoof their inventory data!
     // if (inventoryData !== undefined) user.inventoryData = inventoryData;
     
-    if (status !== undefined) user.status = status;
+    if (status !== undefined) {
+      if (status === 'premium' && user.status !== 'premium') {
+        const expDate = new Date();
+        expDate.setDate(expDate.getDate() + 30);
+        user.premiumExpiresAt = expDate;
+      } else if (status !== 'premium') {
+        user.premiumExpiresAt = null;
+      }
+      user.status = status;
+    }
     if (nicknameColor !== undefined) user.nicknameColor = nicknameColor;
 
     await db.save(user);
     console.log(`Synced data for user: ${user.username}`);
 
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
     return res.json({
       success: true,
-      message: 'Data synchronized successfully!'
+      message: 'Data synchronized successfully!',
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
+      }
     });
 
   } catch (error) {
     console.error('Sync error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// Endpoint: Buy Premium for User Account
+app.post('/api/auth/buy-premium', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username is required.' });
+    }
+
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const cost = 15000;
+    if (user.gold < cost) {
+      return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
+    }
+
+    user.gold -= cost;
+
+    const now = new Date();
+    let expireDate;
+    if (user.status === 'premium' && user.premiumExpiresAt && new Date(user.premiumExpiresAt) > now) {
+      expireDate = new Date(user.premiumExpiresAt);
+      expireDate.setDate(expireDate.getDate() + 30);
+    } else {
+      expireDate = new Date();
+      expireDate.setDate(expireDate.getDate() + 30);
+    }
+
+    user.status = 'premium';
+    user.premiumExpiresAt = expireDate;
+    await db.save(user);
+
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
+    const expiryFormatted = expireDate.toLocaleDateString('ru-RU');
+    console.log(`[PREMIUM] User ${username} purchased Premium. Expiry set to ${expireDate.toISOString()}`);
+
+    return res.json({
+      success: true,
+      message: `Премиум успешно оформлен/продлен до ${expiryFormatted}!`,
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Buy premium error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
@@ -2455,7 +2611,8 @@ app.post('/api/packs/purchase', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
 
@@ -2544,7 +2701,8 @@ app.post('/api/market/buy', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
 
@@ -2621,7 +2779,8 @@ app.post('/api/market/sell', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
 
