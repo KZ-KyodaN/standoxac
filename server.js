@@ -15,6 +15,19 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
+// Version Control Middleware
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    const updateKey = req.headers['x-update-key'];
+    // Allow public API or webhooks if needed, but for now block all /api/
+    if (updateKey !== 'STANDWEYZ-040-SECURE') {
+      console.warn(`[SECURITY] Blocked old client version connection attempt from ${req.ip}`);
+      return res.status(403).json({ success: false, message: 'Пожалуйста, обновите игру до версии 0.4.0!' });
+    }
+  }
+  next();
+});
+
 // Local JSON Database Setup
 const dbFilePath = path.join(__dirname, 'users.json');
 function readUsersLocal() {
