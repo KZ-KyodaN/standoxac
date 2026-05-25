@@ -216,7 +216,9 @@ function loadSkinsCatalog() {
       if (data && Array.isArray(data.skins)) {
         skinsMap = {};
         data.skins.forEach(s => {
-          skinsMap[s.name] = { rarity: s.rarity, price: s.price };
+          if (s && s.name) {
+            skinsMap[s.name.toLowerCase()] = { rarity: s.rarity, price: s.price };
+          }
         });
         console.log(`[ECONOMY] Loaded ${Object.keys(skinsMap).length} skins from catalog.`);
       }
@@ -242,7 +244,8 @@ function getSkinPrice(itemName) {
     }
   };
 
-  const skin = skinsMap[itemName];
+  if (!itemName) return 10;
+  const skin = skinsMap[itemName.toLowerCase()];
   if (skin) {
     if (skin.price > 0) {
       return Math.round(skin.price);
