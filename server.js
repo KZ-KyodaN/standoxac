@@ -1207,6 +1207,32 @@ app.post('/api/auth/sync', async (req, res) => {
             break;
           }
 
+          // Consume newly applied stickers to prevent duplication
+          const sStickers = Array.isArray(serverItem.Stickers) ? serverItem.Stickers : ["", "", "", ""];
+          const cStickers = Array.isArray(clientItem.Stickers) ? clientItem.Stickers : ["", "", "", ""];
+          for (let i = 0; i < 4; i++) {
+            if (cStickers[i] && cStickers[i] !== sStickers[i]) {
+              for (const [uid, sItem] of serverItemsMap.entries()) {
+                if (sItem.Name === cStickers[i]) {
+                  serverItemsMap.delete(uid);
+                  break; // consume only one
+                }
+              }
+            }
+          }
+
+          // Consume newly applied charm to prevent duplication
+          const sCharm = typeof serverItem.Charm === 'string' ? serverItem.Charm : "";
+          const cCharm = typeof clientItem.Charm === 'string' ? clientItem.Charm : "";
+          if (cCharm && cCharm !== sCharm) {
+            for (const [uid, sItem] of serverItemsMap.entries()) {
+              if (sItem.Name === cCharm) {
+                serverItemsMap.delete(uid);
+                break;
+              }
+            }
+          }
+
           const validatedItem = {
             Name: clientItem.Name,
             uid: serverItem.uid,
