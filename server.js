@@ -1171,7 +1171,7 @@ app.post('/api/auth/sync', async (req, res) => {
             break;
           }
 
-          if (clientItem.Name !== serverItem.Name) {
+          if (clientItem.Name.toLowerCase() !== serverItem.Name.toLowerCase()) {
             console.warn(`[ANTI-CHEAT] User ${user.username} tried to change item skin name from ${serverItem.Name} to ${clientItem.Name}`);
             isInventoryValid = false;
             break;
@@ -1186,7 +1186,7 @@ app.post('/api/auth/sync', async (req, res) => {
           }
 
           const validatedItem = {
-            Name: serverItem.Name,
+            Name: clientItem.Name,
             uid: serverItem.uid,
             IsEquipped: !!clientItem.IsEquipped,
             IsNew: !!clientItem.IsNew,
@@ -1474,10 +1474,18 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
 
     console.log(`User ${username} redeemed promo ${promoCode}. Gold added: ${goldAdded}. Items: ${itemsAdded.join(', ')}`);
 
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
     return res.json({
       success: true,
       message: 'Промокод успешно активирован!',
-      rewards: promo.rewards
+      rewards: promo.rewards,
+      inventoryData: inventoryDataStr,
+      inventorySignature: signature,
+      newBalance: user.gold
     });
 
   } catch (error) {
