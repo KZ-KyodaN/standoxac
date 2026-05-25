@@ -3012,7 +3012,7 @@ app.post('/api/market/sell', async (req, res) => {
     const basePrice = getSkinPrice(soldItem.Name);
     const isStatTrack = soldItem.StatTrack && soldItem.StatTrack.IsStatTrack;
     const finalPrice = isStatTrack ? (basePrice + 50) : basePrice;
-    const authoritativeGoldReward = finalPrice - Math.floor(finalPrice * 20 / 100); // 20% commission
+    const authoritativeGoldReward = Math.round(finalPrice * 0.5);
 
     inventory.items = inventory.items.filter(item => item.uid !== itemUid);
 
