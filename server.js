@@ -205,6 +205,53 @@ async function checkUserPremium(user) {
   return user;
 }
 
+// Load Skins Catalog exported from Unity Editor
+const skinsCatalogPath = path.join(__dirname, 'skins_catalog.json');
+let skinsMap = {};
+
+function loadSkinsCatalog() {
+  if (fs.existsSync(skinsCatalogPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(skinsCatalogPath, 'utf8'));
+      if (data && Array.isArray(data.skins)) {
+        skinsMap = {};
+        data.skins.forEach(s => {
+          skinsMap[s.name] = { rarity: s.rarity, price: s.price };
+        });
+        console.log(`[ECONOMY] Loaded ${Object.keys(skinsMap).length} skins from catalog.`);
+      }
+    } catch (e) {
+      console.error('[ECONOMY] Failed to parse skins_catalog.json:', e);
+    }
+  } else {
+    console.warn('[ECONOMY] skins_catalog.json not found. Run "StandWeyz/Export Skins Catalog to Server" in Unity.');
+  }
+}
+loadSkinsCatalog();
+
+function getSkinPrice(itemName) {
+  const getRarityPrice = (rarity) => {
+    switch (rarity) {
+      case 'Common': return 50;
+      case 'Uncommon': return 100;
+      case 'Rare': return 300;
+      case 'Epic': return 650;
+      case 'Legendary': return 1150;
+      case 'Arcane': return 2500;
+      default: return 10;
+    }
+  };
+
+  const skin = skinsMap[itemName];
+  if (skin) {
+    if (skin.price > 0) {
+      return Math.round(skin.price);
+    }
+    return getRarityPrice(skin.rarity);
+  }
+  return 10;
+}
+
 // Promocode Model Schema (Mongoose)
 const promocodeSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true },
@@ -2741,11 +2788,13 @@ app.post('/api/market/buy', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Этот предмет недоступен для покупки.' });
     }
 
-    if (user.gold < price) {
-      return res.status(400).json({ success: false, message: 'Insufficient gold.' });
+    const authoritativePrice = getSkinPrice(itemName);
+
+    if (user.gold < authoritativePrice) {
+      return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
     }
 
-    user.gold -= price;
+    user.gold -= authoritativePrice;
 
     let inventory = { items: [] };
     if (user.inventoryData) {
@@ -2818,6 +2867,100 @@ app.post('/api/market/buy', async (req, res) => {
   }
 });
 
+// Endpoint: Secure Case Opening
+app.post('/api/inventory/open-case', async (req, res) => {
+  try {
+    const { username, caseUid, droppedSkinName, isStatTrack } = req.body;
+    if (!username || !caseUid || !droppedSkinName) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
+    }
+
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    let inventory = { items: [] };
+    if (user.inventoryData) {
+      try {
+        inventory = JSON.parse(user.inventoryData);
+        if (!inventory.items) {
+          inventory.items = [];
+        }
+      } catch (e) {
+        inventory = { items: [] };
+      }
+    }
+
+    // Find and remove the case item
+    const caseIndex = inventory.items.findIndex(item => item.uid === caseUid);
+    if (caseIndex === -1) {
+      return res.status(400).json({ success: false, message: 'Кейс/бокс не найден в вашем инвентаре.' });
+    }
+
+    // Remove the case
+    inventory.items.splice(caseIndex, 1);
+
+    // Create the dropped skin item
+    const newSkinItem = {
+      Name: droppedSkinName,
+      IsEquipped: false,
+      IsNew: true,
+      uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+      Charm: "",
+      Stickers: ["", "", "", ""]
+    };
+
+    if (isStatTrack) {
+      newSkinItem.StatTrack = { IsStatTrack: true, Kills: 0 };
+    }
+
+    inventory.items.push(newSkinItem);
+    user.inventoryData = JSON.stringify(inventory);
+    await db.save(user);
+
+    let clanTag = "";
+    let clanTagColor = "#bfbfbf";
+    if (user.clanId) {
+      const clan = await clanDb.findOne({ _id: user.clanId });
+      if (clan) {
+        clanTag = clan.tag || "";
+        clanTagColor = clan.tagColor || "#bfbfbf";
+      }
+    }
+
+    const inventoryDataStr = user.inventoryData || "{}";
+    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
+    hmac.update(inventoryDataStr);
+    const signature = hmac.digest('hex');
+
+    return res.json({
+      success: true,
+      message: 'Case opened successfully!',
+      user: {
+        username: user.username,
+        playerId: user.playerId,
+        gold: user.gold,
+        kills: user.kills,
+        deaths: user.deaths,
+        headshots: user.headshots,
+        avatar: user.avatar,
+        inventoryData: inventoryDataStr,
+        inventorySignature: signature,
+        status: user.status || "regular",
+        nicknameColor: user.nicknameColor || "",
+        clanTag: clanTag,
+        clanTagColor: clanTagColor,
+        premiumExpiresAt: user.premiumExpiresAt || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Case open error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
 // Endpoint: Secure Market Sell
 app.post('/api/market/sell', async (req, res) => {
   try {
@@ -2843,14 +2986,20 @@ app.post('/api/market/sell', async (req, res) => {
       }
     }
 
-    const initialLength = inventory.items.length;
-    inventory.items = inventory.items.filter(item => item.uid !== itemUid);
-
-    if (inventory.items.length === initialLength) {
+    const soldItem = inventory.items.find(item => item.uid === itemUid);
+    if (!soldItem) {
       return res.status(400).json({ success: false, message: 'Item not found in user inventory.' });
     }
 
-    user.gold += goldReward;
+    // Enforce server-side authoritative gold reward calculation
+    const basePrice = getSkinPrice(soldItem.Name);
+    const isStatTrack = soldItem.StatTrack && soldItem.StatTrack.IsStatTrack;
+    const finalPrice = isStatTrack ? (basePrice + 50) : basePrice;
+    const authoritativeGoldReward = finalPrice - Math.floor(finalPrice * 20 / 100); // 20% commission
+
+    inventory.items = inventory.items.filter(item => item.uid !== itemUid);
+
+    user.gold += authoritativeGoldReward;
     user.inventoryData = JSON.stringify(inventory);
     await db.save(user);
 
