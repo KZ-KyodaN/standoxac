@@ -1077,8 +1077,92 @@ app.post('/api/auth/sync', async (req, res) => {
       user.avatar = avatar;
     }
     
-    // ANTI-CHEAT: Client is NO LONGER allowed to spoof their inventory data!
-    // if (inventoryData !== undefined) user.inventoryData = inventoryData;
+    // ANTI-CHEAT: Secure client inventory synchronization (allows equipping, stickers, charms, stattrack kills)
+    if (inventoryData !== undefined) {
+      let clientInv;
+      try {
+        clientInv = JSON.parse(inventoryData);
+      } catch (e) {
+        clientInv = null;
+      }
+
+      if (clientInv && Array.isArray(clientInv.items)) {
+        let serverInv = { items: [] };
+        if (user.inventoryData) {
+          try {
+            serverInv = JSON.parse(user.inventoryData);
+          } catch (e) {
+            serverInv = { items: [] };
+          }
+        }
+
+        const serverItemsMap = new Map();
+        if (Array.isArray(serverInv.items)) {
+          for (const item of serverInv.items) {
+            if (item && item.uid) {
+              serverItemsMap.set(item.uid, item);
+            }
+          }
+        }
+
+        let isInventoryValid = true;
+        const validatedItems = [];
+
+        for (const clientItem of clientInv.items) {
+          if (!clientItem || !clientItem.uid) {
+            isInventoryValid = false;
+            break;
+          }
+
+          const serverItem = serverItemsMap.get(clientItem.uid);
+          if (!serverItem) {
+            console.warn(`[ANTI-CHEAT] User ${user.username} tried to sync unowned item uid ${clientItem.uid}`);
+            isInventoryValid = false;
+            break;
+          }
+
+          if (clientItem.Name !== serverItem.Name) {
+            console.warn(`[ANTI-CHEAT] User ${user.username} tried to change item skin name from ${serverItem.Name} to ${clientItem.Name}`);
+            isInventoryValid = false;
+            break;
+          }
+
+          const serverST = serverItem.StatTrack || {};
+          const clientST = clientItem.StatTrack || {};
+          if (!!clientST.IsStatTrack !== !!serverST.IsStatTrack) {
+            console.warn(`[ANTI-CHEAT] User ${user.username} tried to spoof StatTrack status`);
+            isInventoryValid = false;
+            break;
+          }
+
+          const validatedItem = {
+            Name: serverItem.Name,
+            uid: serverItem.uid,
+            IsEquipped: !!clientItem.IsEquipped,
+            IsNew: !!clientItem.IsNew,
+            StatTrack: {
+              IsStatTrack: !!serverST.IsStatTrack,
+              Kills: typeof clientST.Kills === 'number' ? clientST.Kills : (serverST.Kills || 0)
+            },
+            Stickers: Array.isArray(clientItem.Stickers)
+              ? clientItem.Stickers.map(s => typeof s === 'string' ? s : "")
+              : ["", "", "", ""],
+            Charm: typeof clientItem.Charm === 'string' ? clientItem.Charm : ""
+          };
+
+          while (validatedItem.Stickers.length < 4) validatedItem.Stickers.push("");
+          if (validatedItem.Stickers.length > 4) validatedItem.Stickers = validatedItem.Stickers.slice(0, 4);
+
+          validatedItems.push(validatedItem);
+        }
+
+        if (isInventoryValid) {
+          user.inventoryData = JSON.stringify({ items: validatedItems });
+        } else {
+          return res.status(400).json({ success: false, message: 'Invalid inventory sync request.' });
+        }
+      }
+    }
     
     if (status !== undefined) {
       if (status === 'premium' && user.status !== 'premium') {
