@@ -2773,6 +2773,10 @@ app.post('/api/packs/purchase', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
     }
 
+    if (computedPrice === 6000) {
+      return res.status(400).json({ success: false, message: 'Купить акцию уже нельзя. Дата завершения продаж: 25.05.2026' });
+    }
+
     // Anti-cheat: verify no blocked skins are being purchased
     for (const item of items) {
       if (item && BLOCKED_FROM_SALE_SKINS.includes(item.name)) {
