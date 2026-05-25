@@ -1,0 +1,1869 @@
+{
+    "skins": [
+        {
+            "name": "AKR12_4Years",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Aurora",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Carbon",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Cyber",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Flow",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Geometric",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Mechanic",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "akr12_ominoussnoring",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_PixelCamouflage",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Riot",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AKR12_Spring",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_2YearsRed",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Carbon",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "akr_devilseye",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Dragon",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_GoldenDevil",
+            "rarity": "Arcane",
+            "price": 321.0
+        },
+        {
+            "name": "akr_icylemerald",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_IcyLight",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_LouisVuitton",
+            "rarity": "Legendary",
+            "price": 222.0
+        },
+        {
+            "name": "AKR_Nano",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Necromancer",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_New2",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Sport",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Tiger",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_TreasureHunter",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AKR_Worm",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "AMW_2YearsRed",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AMW_New1",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "anticamper",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_Dragon",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_Gear",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_Genesis",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_heavenlygrin",
+            "rarity": "Arcane",
+            "price": 321.0
+        },
+        {
+            "name": "AWM_LouisVuitton",
+            "rarity": "Arcane",
+            "price": 321.0
+        },
+        {
+            "name": "AWM_Phoenix",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "awm_pinkfear",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_PolarNight",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_Scratch",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_Sport",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_SportV2",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "AWM_TreasureHunter",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "awpmaster",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "awpmastercolor",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "batrider",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "bloodyclown",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_DragonGlass",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_Gold",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_New1",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_Red",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_Starfall",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Butterfly_Swamp",
+            "rarity": "Arcane",
+            "price": 2134.0
+        },
+        {
+            "name": "CharmBat",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "CharmBroom",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "CharmFrankenstein",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "CharmGhost",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "CharmLantern",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "CharmMoon",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "CharmPumpkin",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "CharmPumpkinHat",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "CharmScarecrow",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "CharmScythe",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "CharmSkull",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "CharmSpider",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "CharmZombie",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "deadskull",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_Ace",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "deagle_aureate",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_Blood",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_CaptainMorgan",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "deagle_crystaldarkness",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_DragonGlass",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_FusionCore",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_GreenRevenge",
+            "rarity": "Epic",
+            "price": 76.0
+        },
+        {
+            "name": "Deagle_Infection",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_Predator",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_RedDragon",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_Thunder",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "Deagle_Winner",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "deaglemaster",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "deaglemastercolor",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "devilish",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "dracula",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "draculacloak",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "dragon",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "entrykill",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "evilpumpkin",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FabM_Flight",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FabM_Green",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "FabM_Parrot",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "FabM_Reactor",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Autumn",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Beagle",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Fury",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Handcraft",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Hull",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Famas_Monster",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "fang_devilblades",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "fang_snowball",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "feed",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "fiveseven_holidayofevil",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_New2",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Poison",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Rush",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_SightGrey",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Tactical",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Toxic",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Venom",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FiveSeven_Zone",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_New1",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_New2",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_New3",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_New4",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_New5",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_SnowCamo",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FlipKnife_SnowEye",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FnFAL_AcidCarbon",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "fnfal_dusktide",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "FnFal_Green",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "FnFAL_Leather",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "FnFal_Phoenix",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "FnFAL_Tactical",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Furious_Box",
+            "rarity": "None",
+            "price": 100.0
+        },
+        {
+            "name": "Furious_Case",
+            "rarity": "None",
+            "price": 100.0
+        },
+        {
+            "name": "G22_Carbon",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "g22_dragonostral",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "G22_FrostWyrm",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Inferno",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Monster",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Nest",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "G22_New1",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Pattern",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "G22_PixelCamouflage",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Relic",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "G22_Starfall",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "G22_WhiteCarbon",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "G22_YellowLine",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "gangstapumpkin",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "ghosty",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "ghoul",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_acid",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_acidveil",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_artificer",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_camo",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_crystal",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_dragonglass",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn1",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn2",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn3",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn4",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn5",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Fireborn6",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_flux",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_fossil",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_handcraft",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_haunt",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_icepattern",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_immolation",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Gloves_Mimicry",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_nike",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_pinkfear",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_plague",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_raider",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_shatter",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_stream",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloves_thug",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "glovesautumn",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "GlovesBurningFists",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "GlovesChampion",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "glovesgeometric",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "gloveslivingflame",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "glovesneuro",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "glovesphoenix",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "GlovesPun",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "glovesretrowave",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "GlovesSnowEye",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "GlovesSteamRider",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "goldskull",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "grenadewithlove",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "headshotzone",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "hurryghost",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "infernalskull",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "jKommando_Ancient",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "jKommando_Floral",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "jKommando_Frozen",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "jKommando_Luxury",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "jKommando_Reaper",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "karambit_blueforest",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Karambit_Claw",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Karambit_Crysg",
+            "rarity": "None",
+            "price": 99999.0
+        },
+        {
+            "name": "Karambit_DolceGabanna",
+            "rarity": "Arcane",
+            "price": 222.0
+        },
+        {
+            "name": "Karambit_Gold",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Karambit_IceDragon",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Karambit_Scratch",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Karambit_Universe",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "king",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeBayonet_Frozen",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeButterfly_ColdFlam",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeKarambit_ColdFlame",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeKarambit_Frozen",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeKarambit_SnowCamo",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_Corrode",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_Fleck",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_Meld",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_Mimicry",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_Shroud",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KnifeSting_TemperShades",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_Bone",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_FireIce",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_Luxury",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_Poison",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_Radiation",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Kunai_Reaper",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KunaiKnife_ColdFlame",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KunaiKnife_Moon",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "KunaiKnife_SnowCamo",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "luckystar",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "m110_cyber",
+            "rarity": "Rare",
+            "price": 1.0
+        },
+        {
+            "name": "M110_Flow",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M110_ReachKeeper",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "M110_Transition",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "M16_4Years",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M16_Camouflage",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "M16_Facet",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "M16_IronWill",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "m16_seaglint",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M16_Winged",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M40_Beagle",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "m40_daybreak",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "M40_Monster",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M40_New1",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "M40_New2",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M40_Pro",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "M40_Quake",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M40_SnowDemon",
+            "rarity": "Legendary",
+            "price": 1.0
+        },
+        {
+            "name": "M4_DolceGabanna",
+            "rarity": "Epic",
+            "price": 111.0
+        },
+        {
+            "name": "m4_ghostwhisper",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M4_GrandPrix",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M4_IceSky",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Lizard",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Necromancer",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M4_new2",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Predator",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Pro",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Revival",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Samurai",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Tiger",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "M4_Wolf",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "M9Bayonet_Ancient",
+            "rarity": "Arcane",
+            "price": 14880.0
+        },
+        {
+            "name": "M9Bayonet_BlueBlood",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M9Bayonet_GragonGlass",
+            "rarity": "Arcane",
+            "price": 17700.0
+        },
+        {
+            "name": "M9Bayonet_NewYear",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "m9bayonet_purpleknock",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "M9Bayonet_Scratch",
+            "rarity": "Arcane",
+            "price": 21000.0
+        },
+        {
+            "name": "M9Bayonet_Universe",
+            "rarity": "Arcane",
+            "price": 20000.0
+        },
+        {
+            "name": "madbat",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "minus28",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "MP5_4Years",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "MP5_NorthernFury",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "MP5_ProjectZ9",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "MP5_Reactor",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "mp5_watergun",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "MP5_Zone",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_2Years",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_2YearsRed",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Arcade",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Blizzard",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Graffity",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Lich",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Monkey",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_New1",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Offroad",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Revival",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "MP7_Thorn",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "mummy",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "murder",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "niceskill",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "niceskillcolor",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "Origin_Box",
+            "rarity": "Arcane",
+            "price": 100.0
+        },
+        {
+            "name": "Origin_Case",
+            "rarity": "Arcane",
+            "price": 100.0
+        },
+        {
+            "name": "P350_4Years",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Autumn",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Blizzard",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Cyber",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "P350_ForestSpirit",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Nano",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Poison",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Raider",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Rally",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Savannah",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "P350_Skull",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Fissure",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "P90_FusionCore",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Ghoul",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "P90_IronWill",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Jungle",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Pilot",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Radiation",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "P90_Samurai",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "pro",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "punisher",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Rival_Box",
+            "rarity": "Legendary",
+            "price": 100.0
+        },
+        {
+            "name": "Rival_Case",
+            "rarity": "Arcane",
+            "price": 100.0
+        },
+        {
+            "name": "rush",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "s1001",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "samurai",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Scorpion_Camouflage",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Scorpion_Green",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Scorpion_Scratch",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Scorpion_Sky",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "ScorpionKnife_ColdFlame",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Blaster",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Branches",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Facet",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Necromancer",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_New1",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_NorthernCamouflage",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Pathfinder",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Quake",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "SM1014_Shark",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "sm1014_triton",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Smoke_Nature",
+            "rarity": "Rare",
+            "price": 22.0
+        },
+        {
+            "name": "snot",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "sparegold",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Sting_Default",
+            "rarity": "Arcane",
+            "price": 432.0
+        },
+        {
+            "name": "sting_poisonous",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "Sting_RedBlade",
+            "rarity": "Arcane",
+            "price": 1234.0
+        },
+        {
+            "name": "strikecolor",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_Aurora",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_Fable",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_New1",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_New3",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_Reactor",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Tec9_Spot",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_4Years",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Beast",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Cerberus",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Cyberpunk",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "ump45_dragonlaugh",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Gas",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Geometric",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Industrial",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Iron",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Pixel",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_PixelV2",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Shark",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Spirit",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_WhiteCarbon",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "UMP45_Winged",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "USP_2Years",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "USP_2YearsRed",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Crystal",
+            "rarity": "Legendary",
+            "price": 321.0
+        },
+        {
+            "name": "USP_Fiend",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Genesis",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Geometric",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "USP_IcySky",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Line",
+            "rarity": "Common",
+            "price": 0.0
+        },
+        {
+            "name": "USP_New1",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Nike",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Pisces",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "USP_Yellow",
+            "rarity": "Uncommon",
+            "price": 0.0
+        },
+        {
+            "name": "v2",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "v2pro",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "val_blueskull",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "VAL_Forge",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "val_pinkdevil",
+            "rarity": "Arcane",
+            "price": 0.0
+        },
+        {
+            "name": "val_solstice",
+            "rarity": "Legendary",
+            "price": 0.0
+        },
+        {
+            "name": "yinyang",
+            "rarity": "Epic",
+            "price": 0.0
+        },
+        {
+            "name": "zombie",
+            "rarity": "Rare",
+            "price": 0.0
+        },
+        {
+            "name": "Fable_Case",
+            "rarity": "None",
+            "price": 100.0
+        },
+        {
+            "name": "hallowen2019_case",
+            "rarity": "None",
+            "price": 60.0
+        },
+        {
+            "name": "hallowen2020_case",
+            "rarity": "None",
+            "price": 100.0
+        },
+        {
+            "name": "rainbow_case",
+            "rarity": "None",
+            "price": 60.0
+        },
+        {
+            "name": "Scorpion_Case",
+            "rarity": "None",
+            "price": 100.0
+        }
+    ]
+}
