@@ -1533,6 +1533,10 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
   }
 });
 
+const MUSIC_KITS = [
+  "gazan-67", "gazan-cher", "halozy-snow", "kurarin", "legacy-slowed-down", "marisa-stole", "pokoe"
+];
+
 function fixCorruptedInventory(user) {
   if (user.inventoryData) {
     try {
@@ -1541,7 +1545,7 @@ function fixCorruptedInventory(user) {
       if (inv && inv.items) {
         for (let i = 0; i < inv.items.length; i++) {
           let item = inv.items[i];
-          if (item && item.Name && item.Name.includes('-')) {
+          if (item && item.Name && MUSIC_KITS.includes(item.Name)) {
             // It's a music kit that was accidentally added as a skin!
             // Save the ID in Charm/uid so the MusicKit UI still sees it via Contains()
             item.Charm = item.Name;
