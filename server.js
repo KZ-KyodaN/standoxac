@@ -1090,7 +1090,13 @@ app.post('/api/auth/sync', async (req, res) => {
       }
       user.status = status;
     }
-    if (nicknameColor !== undefined) user.nicknameColor = nicknameColor;
+    if (nicknameColor !== undefined) {
+      const currentStatus = status !== undefined ? status : user.status;
+      if (nicknameColor !== "" && currentStatus !== 'premium' && currentStatus !== 'developer') {
+        return res.status(403).json({ success: false, message: 'Цвет никнейма доступен только для Premium пользователей.' });
+      }
+      user.nicknameColor = nicknameColor;
+    }
 
     await db.save(user);
     console.log(`Synced data for user: ${user.username}`);
