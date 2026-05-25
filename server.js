@@ -469,7 +469,7 @@ const tradeDb = {
       let match = true;
       for (const key in query) {
         if (query[key] && query[key].$in) {
-            if (!query[key].$in.includes(t[key])) match = false;
+          if (!query[key].$in.includes(t[key])) match = false;
         } else if (t[key] !== query[key]) {
           match = false;
         }
@@ -789,7 +789,7 @@ app.post('/api/v1/economy/purchase', async (req, res) => {
 
     let inventory = { items: [] };
     if (user.inventoryData) {
-      try { inventory = JSON.parse(user.inventoryData); } catch (e) {}
+      try { inventory = JSON.parse(user.inventoryData); } catch (e) { }
     }
 
     const newItem = {
@@ -802,7 +802,7 @@ app.post('/api/v1/economy/purchase', async (req, res) => {
       uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
     };
     inventory.items.push(newItem);
-    
+
     user.inventoryData = JSON.stringify(inventory);
     await db.save(user);
 
@@ -820,9 +820,9 @@ app.post('/api/v1/economy/purchase', async (req, res) => {
 
     console.log(`[ECONOMY] User ${username} purchased ${itemId} for ${price} gold.`);
 
-    return res.json({ 
-      success: true, 
-      newBalance: user.gold, 
+    return res.json({
+      success: true,
+      newBalance: user.gold,
       inventoryData: user.inventoryData,
       inventorySignature: signature
     });
@@ -1058,7 +1058,7 @@ app.post('/api/auth/sync', async (req, res) => {
 
     // ANTI-CHEAT: Client is NO LONGER allowed to overwrite their Gold balance!
     // if (gold !== undefined) user.gold = gold;
-    
+
     if (kills !== undefined) user.kills = kills;
     if (deaths !== undefined) user.deaths = deaths;
     if (headshots !== undefined) user.headshots = headshots;
@@ -1066,17 +1066,17 @@ app.post('/api/auth/sync', async (req, res) => {
       if (avatar.length > 7500000) {
         return res.status(400).json({ success: false, message: 'Аватарка не должна превышать 5 МБ.' });
       }
-      
+
       const isGif = avatar.startsWith('R0lGOD'); // Base64 signature for GIF89a / GIF87a
       const currentStatus = status !== undefined ? status : user.status;
-      
+
       if (isGif && currentStatus !== 'premium' && currentStatus !== 'developer') {
         return res.status(403).json({ success: false, message: 'GIF аватарки доступны только для Premium пользователей.' });
       }
-      
+
       user.avatar = avatar;
     }
-    
+
     // ANTI-CHEAT: Secure client inventory synchronization (allows equipping, stickers, charms, stattrack kills)
     if (inventoryData !== undefined) {
       let clientInv;
@@ -1163,7 +1163,7 @@ app.post('/api/auth/sync', async (req, res) => {
         }
       }
     }
-    
+
     if (status !== undefined) {
       if (status === 'premium' && user.status !== 'premium') {
         const expDate = new Date();
@@ -1313,13 +1313,13 @@ app.get('/api/avatar/:username', async (req, res) => {
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required.' });
     }
-    
+
     // Support querying by playerId or username
     let user = null;
     if (username.length === 12 && !isNaN(username)) { // simple heuristics for numeric player ID
       user = await db.findByPlayerId(username);
     }
-    
+
     if (!user) {
       user = await db.findOne(username);
     }
@@ -2265,19 +2265,19 @@ app.post('/api/trades/create', async (req, res) => {
 
     const receiver = await db.findByPlayerId(targetPlayerId);
     if (!receiver) return res.status(404).json({ success: false, message: 'Получатель не найден.' });
-    
+
     if (sender.playerId === receiver.playerId) {
       return res.status(400).json({ success: false, message: 'Нельзя отправить трейд самому себе.' });
     }
 
     let senderInventory = { items: [] };
     if (sender.inventoryData) {
-      try { senderInventory = JSON.parse(sender.inventoryData); } catch (e) {}
+      try { senderInventory = JSON.parse(sender.inventoryData); } catch (e) { }
     }
 
     let receiverInventory = { items: [] };
     if (receiver.inventoryData) {
-      try { receiverInventory = JSON.parse(receiver.inventoryData); } catch (e) {}
+      try { receiverInventory = JSON.parse(receiver.inventoryData); } catch (e) { }
     }
 
     // Check if sender has all items and they are NOT already in trade
@@ -2292,7 +2292,7 @@ app.post('/api/trades/create', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Одна или несколько ваших вещей уже находятся в другом трейде.' });
       }
       if (item.IsEquipped) {
-         return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
+        return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
       }
       itemsToTrade.push(item);
     }
@@ -2357,7 +2357,7 @@ const activeTradeLocks = new Set();
 
 app.post('/api/trades/accept', async (req, res) => {
   const { username, tradeId } = req.body;
-  
+
   if (!tradeId) return res.status(400).json({ success: false, message: 'Trade ID missing.' });
 
   // RACE CONDITION DUPE PROTECTION
@@ -2377,10 +2377,10 @@ app.post('/api/trades/accept', async (req, res) => {
     if (!sender) return res.status(404).json({ success: false, message: 'Отправитель не найден.' });
 
     let senderInv = { items: [] };
-    if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) {}
-    
+    if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) { }
+
     let receiverInv = { items: [] };
-    if (receiver.inventoryData) try { receiverInv = JSON.parse(receiver.inventoryData); } catch (e) {}
+    if (receiver.inventoryData) try { receiverInv = JSON.parse(receiver.inventoryData); } catch (e) { }
 
     // 1. Move items from Sender to Receiver
     const itemsToMoveToReceiver = [];
@@ -2409,7 +2409,7 @@ app.post('/api/trades/accept', async (req, res) => {
     receiverInv.items = receiverInv.items.filter(item => {
       if (safeReceiverItems.includes(item.uid)) {
         if (item.isTradeFrozen || item.IsEquipped) {
-           return true; // Cannot move this item right now
+          return true; // Cannot move this item right now
         }
         item.isTradeFrozen = false;
         itemsToMoveToSender.push(item);
@@ -2435,7 +2435,7 @@ app.post('/api/trades/accept', async (req, res) => {
 
     sender.inventoryData = JSON.stringify(senderInv);
     receiver.inventoryData = JSON.stringify(receiverInv);
-    
+
     await db.save(sender);
     await db.save(receiver);
 
@@ -2467,8 +2467,8 @@ app.post('/api/trades/decline', async (req, res) => {
     const sender = await db.findOne(trade.senderUsername);
     if (sender) {
       let senderInv = { items: [] };
-      if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch(e){}
-      
+      if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) { }
+
       senderInv.items.forEach(item => {
         if (trade.senderItems.includes(item.uid)) {
           item.isTradeFrozen = false;
@@ -2487,6 +2487,11 @@ app.post('/api/trades/decline', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
+// Skins that cannot be purchased from market or pack shop (administrative/exclusive skins)
+const BLOCKED_FROM_SALE_SKINS = [
+  "Karambit_Crysg" // Add the Unity asset name of your secret skin here
+];
 
 // Endpoint: Secure Server-Authoritative Match Rewards
 const CHEAP_SKINS = [
@@ -2522,7 +2527,7 @@ app.post('/api/match/reward', async (req, res) => {
     if (roll < 0.1) {
       rewardType = "skin";
       rolledSkin = CHEAP_SKINS[Math.floor(Math.random() * CHEAP_SKINS.length)];
-      
+
       let inventory = { items: [] };
       if (user.inventoryData) {
         try {
@@ -2534,7 +2539,7 @@ app.post('/api/match/reward', async (req, res) => {
           inventory = { items: [] };
         }
       }
-      
+
       const newItem = {
         Name: rolledSkin,
         IsEquipped: false,
@@ -2543,10 +2548,10 @@ app.post('/api/match/reward', async (req, res) => {
         Charm: "",
         Stickers: ["", "", "", ""]
       };
-      
+
       inventory.items.push(newItem);
       user.inventoryData = JSON.stringify(inventory);
-      
+
     } else if (roll < 0.8) {
       rewardType = "gold";
       rolledGold = Math.floor(Math.random() * (500 - 50 + 1)) + 50;
@@ -2622,6 +2627,13 @@ app.post('/api/packs/purchase', async (req, res) => {
 
     if (user.gold < price) {
       return res.status(400).json({ success: false, message: 'Insufficient gold.' });
+    }
+
+    // Anti-cheat: verify no blocked skins are being purchased
+    for (const item of items) {
+      if (item && BLOCKED_FROM_SALE_SKINS.includes(item.name)) {
+        return res.status(400).json({ success: false, message: `Предмет ${item.name} недоступен для покупки.` });
+      }
     }
 
     // Deduct gold
@@ -2723,6 +2735,10 @@ app.post('/api/market/buy', async (req, res) => {
     const user = await db.findOne(username);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (BLOCKED_FROM_SALE_SKINS.includes(itemName)) {
+      return res.status(400).json({ success: false, message: 'Этот предмет недоступен для покупки.' });
     }
 
     if (user.gold < price) {
@@ -2889,14 +2905,14 @@ app.get('/api/inventory/:playerId', async (req, res) => {
 
     let inventory = { items: [] };
     if (targetUser.inventoryData) {
-      try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) {}
+      try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) { }
     }
 
     // Filter out equipped and frozen items from what we send back to ensure accurate picking
     const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
 
     return res.json({ success: true, inventory: availableItems });
-  } catch(e) {
+  } catch (e) {
     console.error('Inventory GET error:', e);
     return res.status(500).json({ success: false, message: 'Server error' });
   }
