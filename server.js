@@ -105,7 +105,8 @@ const userSchema = new mongoose.Schema({
   clanRole: { type: String, default: "" },
   status: { type: String, default: "regular" },
   nicknameColor: { type: String, default: "" },
-  premiumExpiresAt: { type: Date, default: null }
+  premiumExpiresAt: { type: Date, default: null },
+  equippedMusicKit: { type: String, default: "" }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -921,7 +922,8 @@ app.post('/api/auth/register', async (req, res) => {
       clanRole: "",
       status: "regular",
       nicknameColor: "",
-      premiumExpiresAt: null
+      premiumExpiresAt: null,
+      equippedMusicKit: ""
     };
 
     const savedUser = await db.create(newUser);
@@ -941,7 +943,8 @@ app.post('/api/auth/register', async (req, res) => {
         inventoryData: savedUser.inventoryData,
         status: savedUser.status || "regular",
         nicknameColor: savedUser.nicknameColor || "",
-        premiumExpiresAt: savedUser.premiumExpiresAt || null
+        premiumExpiresAt: savedUser.premiumExpiresAt || null,
+        equippedMusicKit: savedUser.equippedMusicKit || ""
       }
     });
 
@@ -1005,7 +1008,8 @@ app.post('/api/auth/login', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -1064,7 +1068,8 @@ app.post('/api/auth/profile', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -1077,7 +1082,7 @@ app.post('/api/auth/profile', async (req, res) => {
 // Endpoint: Sync Profile Data
 app.post('/api/auth/sync', async (req, res) => {
   try {
-    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor, newUsername } = req.body;
+    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor, newUsername, equippedMusicKit } = req.body;
 
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required for sync.' });
@@ -1236,6 +1241,10 @@ app.post('/api/auth/sync', async (req, res) => {
       }
       user.nicknameColor = nicknameColor;
     }
+    
+    if (equippedMusicKit !== undefined) {
+      user.equippedMusicKit = equippedMusicKit;
+    }
 
     await db.save(user);
     console.log(`Synced data for user: ${user.username}`);
@@ -1272,7 +1281,8 @@ app.post('/api/auth/sync', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -1351,7 +1361,8 @@ app.post('/api/auth/buy-premium', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt
+        premiumExpiresAt: user.premiumExpiresAt,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
