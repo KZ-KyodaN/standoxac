@@ -907,7 +907,7 @@ app.post('/api/auth/register', async (req, res) => {
       username: username,
       password: hashedPassword,
       playerId: generatedPlayerId,
-      gold: 30000,
+      gold: 10000,
       kills: "0",
       deaths: "0",
       headshots: "0",
@@ -2689,10 +2689,12 @@ app.post('/api/packs/purchase', async (req, res) => {
     }
 
     let computedPrice = 0;
+    let hasCases = false;
     for (const item of items) {
       if (!item || !item.name) continue;
       const name = item.name.toLowerCase();
       if (name.includes('case') || name.includes('box')) {
+        hasCases = true;
         let itemPrice = 100;
         if (name.includes('origin') && name.includes('case')) {
           itemPrice = 1000;
@@ -2702,6 +2704,14 @@ app.post('/api/packs/purchase', async (req, res) => {
           itemPrice = 1000;
         }
         computedPrice += itemPrice;
+      }
+    }
+
+    if (!hasCases && items.length > 0) {
+      // It's a skin collection/pack, use the client's provided price
+      computedPrice = price;
+      if (computedPrice <= 0) {
+        return res.status(400).json({ success: false, message: 'Invalid price for pack.' });
       }
     }
 
