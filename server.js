@@ -1204,6 +1204,11 @@ app.post('/api/auth/sync', async (req, res) => {
           if (validatedItem.Stickers.length > 4) validatedItem.Stickers = validatedItem.Stickers.slice(0, 4);
 
           validatedItems.push(validatedItem);
+          serverItemsMap.delete(clientItem.uid);
+        }
+
+        for (const remainingServerItem of serverItemsMap.values()) {
+          validatedItems.push(remainingServerItem);
         }
 
         if (isInventoryValid) {
