@@ -2414,9 +2414,6 @@ app.post('/api/trades/create', async (req, res) => {
       if (item.isTradeFrozen) {
         return res.status(400).json({ success: false, message: 'Одна или несколько ваших вещей уже находятся в другом трейде.' });
       }
-      if (item.IsEquipped) {
-        return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
-      }
       itemsToTrade.push(item);
     }
 
@@ -2426,9 +2423,6 @@ app.post('/api/trades/create', async (req, res) => {
       const item = receiverInventory.items.find(i => i.uid === uid);
       if (!item) {
         return res.status(400).json({ success: false, message: 'Запрошенная вещь у друга не найдена.' });
-      }
-      if (item.IsEquipped) {
-        return res.status(400).json({ success: false, message: 'Друг сейчас надел эту вещь.' });
       }
     }
 
@@ -3161,8 +3155,8 @@ app.get('/api/inventory/:playerId', async (req, res) => {
       try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) { }
     }
 
-    // Filter out equipped and frozen items from what we send back to ensure accurate picking
-    const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
+    // Filter out frozen items from what we send back to ensure accurate picking
+    const availableItems = inventory.items.filter(i => !i.isTradeFrozen);
 
     return res.json({ success: true, inventory: availableItems });
   } catch (e) {
