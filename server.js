@@ -21,11 +21,16 @@ app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
 // Version Control Middleware
 app.use((req, res, next) => {
+  // Always allow CORS preflight requests to pass through
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   if (req.path.startsWith('/api/')) {
     const updateKey = req.headers['x-update-key'];
     // Allow public API or webhooks if needed, but for now block all /api/
     if (updateKey !== 'STANDWEYZ-040-SECURE') {
-      console.warn(`[SECURITY] Blocked old client version connection attempt from ${req.ip}`);
+      console.warn(`[SECURITY] Blocked old client version connection attempt from ${req.ip} to ${req.path}`);
       return res.status(403).json({ success: false, message: 'Пожалуйста, обновите игру до версии 0.4.0!' });
     }
   }
