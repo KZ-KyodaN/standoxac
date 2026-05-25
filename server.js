@@ -2769,6 +2769,24 @@ app.post('/api/packs/purchase', async (req, res) => {
       }
     }
 
+    // Anti-dupe/economy protection: Ensure the pack cost is strictly greater than the total sell value of its items
+    let totalSellValue = 0;
+    for (const item of items) {
+      if (!item || !item.name) continue;
+      const basePrice = getSkinPrice(item.name);
+      totalSellValue += Math.round(basePrice * 0.5); // Normal item sell value
+      if (item.canBeInStatTrack) {
+        totalSellValue += Math.round((basePrice + 50) * 0.5); // StatTrack item sell value
+      }
+    }
+
+    if (computedPrice <= totalSellValue) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Покупка этого набора временно недоступна из-за ошибки в экономике (цена ниже стоимости продажи).' 
+      });
+    }
+
     if (user.gold < computedPrice) {
       return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
     }
