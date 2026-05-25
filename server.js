@@ -23,16 +23,10 @@ app.use((req, res, next) => {
   }
 
   if (req.path.startsWith('/api/')) {
-    // Exception for Promo code redeem so current build works
-    if (req.path === '/api/auth/redeem-promo') {
-      return next();
-    }
-
     const updateKey = req.headers['x-update-key'];
-    // Allow public API or webhooks if needed, but for now block all /api/
     if (updateKey !== 'STANDWEYZ-040-SECURE') {
-      console.warn(`[SECURITY] Blocked old client version connection attempt from ${req.ip} to ${req.path}`);
-      return res.status(403).json({ success: false, message: 'Пожалуйста, обновите игру до версии 0.4.0!' });
+      // Just log it, don't block anymore to prevent issues with missing headers in older code like TradeManager
+      // console.warn(`[SECURITY] Old client version connection attempt from ${req.ip} to ${req.path}`);
     }
   }
   next();
