@@ -249,6 +249,32 @@ function loadSkinsCatalog() {
 }
 loadSkinsCatalog();
 
+// In-Memory Mutex for concurrent user state modifications to prevent dupes
+const userLocks = new Map();
+async function withUserLock(username, fn) {
+  if (!username) return await fn();
+  const normalizedUser = username.toLowerCase();
+  
+  if (!userLocks.has(normalizedUser)) {
+    userLocks.set(normalizedUser, Promise.resolve());
+  }
+
+  let resolveLock;
+  const nextLock = new Promise(resolve => { resolveLock = resolve; });
+  const currentLock = userLocks.get(normalizedUser);
+  userLocks.set(normalizedUser, currentLock.then(() => nextLock));
+
+  try {
+    await currentLock;
+    return await fn();
+  } finally {
+    resolveLock();
+    if (userLocks.get(normalizedUser) === nextLock) {
+      userLocks.delete(normalizedUser);
+    }
+  }
+}
+
 function getSkinPrice(itemName) {
   const getRarityPrice = (rarity) => {
     switch (rarity) {
@@ -1105,12 +1131,13 @@ app.post('/api/auth/sync', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Username is required for sync.' });
     }
 
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
+    return await withUserLock(username, async () => {
+      const user = await db.findOne(username);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found.' });
+      }
 
-    if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
+      if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
       if (newUsername.length < 3 || newUsername.length > 16) {
         return res.status(400).json({ success: false, message: 'Имя должно быть от 3 до 16 символов.' });
       }
@@ -1327,6 +1354,8 @@ app.post('/api/auth/sync', async (req, res) => {
         premiumExpiresAt: user.premiumExpiresAt || null,
         equippedMusicKit: user.equippedMusicKit || ""
       }
+    });
+
     });
 
   } catch (error) {
@@ -2925,8 +2954,9 @@ app.post('/api/market/buy', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required parameters.' });
     }
 
-    const user = await db.findOne(username);
-    if (!user) {
+    return await withUserLock(username, async () => {
+      const user = await db.findOne(username);
+      if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
@@ -3115,8 +3145,9 @@ app.post('/api/market/sell', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required parameters.' });
     }
 
-    const user = await db.findOne(username);
-    if (!user) {
+    return await withUserLock(username, async () => {
+      const user = await db.findOne(username);
+      if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
