@@ -2820,6 +2820,10 @@ app.post('/api/packs/purchase', async (req, res) => {
         computedPrice += itemPrice;
       } else if (MUSIC_KITS_PRICES[name]) {
         computedPrice += MUSIC_KITS_PRICES[name];
+      } else if (name.includes('halloween')) {
+        computedPrice += 990;
+      } else {
+        computedPrice += (price !== undefined && Number(price) > 0) ? Number(price) : 990;
       }
     }
 
@@ -3153,7 +3157,24 @@ app.post('/api/market/sell', async (req, res) => {
     const basePrice = getSkinPrice(soldItem.Name);
     const isStatTrack = soldItem.StatTrack && soldItem.StatTrack.IsStatTrack;
     const finalPrice = isStatTrack ? (basePrice + 50) : basePrice;
-    const authoritativeGoldReward = Math.round(finalPrice * 0.5);
+    let authoritativeGoldReward = Math.round(finalPrice * 0.5);
+
+    // Exploit prevention: Sell Halloween items for 10-50 gold based on rarity
+    if (soldItem.Name && soldItem.Name.toLowerCase().includes('halloween')) {
+      const skin = skinsMap[soldItem.Name.toLowerCase()];
+      const rarity = skin ? skin.rarity : 'Common';
+      switch (rarity) {
+        case 'Common': authoritativeGoldReward = 10; break;
+        case 'Uncommon': authoritativeGoldReward = 20; break;
+        case 'Rare': authoritativeGoldReward = 30; break;
+        case 'Epic': authoritativeGoldReward = 40; break;
+        case 'Legendary':
+        case 'Arcane':
+          authoritativeGoldReward = 50; break;
+        default:
+          authoritativeGoldReward = 15;
+      }
+    }
 
     inventory.items = inventory.items.filter(item => item.uid !== itemUid);
 
