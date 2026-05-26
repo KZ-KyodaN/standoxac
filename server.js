@@ -2711,6 +2711,10 @@ app.post('/api/packs/purchase', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required parameters.' });
     }
 
+    if (price !== undefined && Number(price) >= 6000) {
+      return res.status(400).json({ success: false, message: 'Акция закончилась 25.05.2026' });
+    }
+
     const user = await db.findOne(username);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
@@ -2733,6 +2737,10 @@ app.post('/api/packs/purchase', async (req, res) => {
       } else if (MUSIC_KITS_PRICES[name]) {
         computedPrice += MUSIC_KITS_PRICES[name];
       }
+    }
+
+    if (computedPrice >= 6000) {
+      return res.status(400).json({ success: false, message: 'Акция закончилась 25.05.2026' });
     }
 
     if (user.gold < computedPrice) {
