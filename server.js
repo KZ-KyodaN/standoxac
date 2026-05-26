@@ -108,6 +108,8 @@ const userSchema = new mongoose.Schema({
   banReason: { type: String, default: "" },
   banExpiresAt: { type: Date, default: null },
   banCreatedBy: { type: String, default: "" },
+  lastIp: { type: String, default: "" },
+  lastHwid: { type: String, default: "" },
   nicknameColor: { type: String, default: "" },
   premiumExpiresAt: { type: Date, default: null },
   equippedMusicKit: { type: String, default: "" }
@@ -750,6 +752,24 @@ app.post('/api/v1/auth/check-ban', async (req, res) => {
     const { userId, hwid } = req.body;
     if (!userId) return res.status(400).json({ success: false, message: 'User ID is required.' });
 
+    // Capture/update user's last IP and HWID
+    const user = await db.findByPlayerId(userId);
+    if (user) {
+      let changed = false;
+      if (hwid && user.lastHwid !== hwid) {
+        user.lastHwid = hwid;
+        changed = true;
+      }
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      if (ip && user.lastIp !== ip) {
+        user.lastIp = ip;
+        changed = true;
+      }
+      if (changed) {
+        await db.save(user);
+      }
+    }
+
     const activeBan = await banDb.findOne({
       $or: [{ userId: userId }, { hwid: hwid }],
       $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }]
@@ -1022,6 +1042,13 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid username or password.' });
     }
 
+    // Capture last IP during login
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (ip && user.lastIp !== ip) {
+      user.lastIp = ip;
+      await db.save(user);
+    }
+
     console.log(`User logged in: ${user.username}`);
 
     let clanTag = "";
@@ -1140,6 +1167,13 @@ app.post('/api/auth/sync', async (req, res) => {
     const user = await db.findOne(username);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    // Capture last IP during sync
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    if (ip && user.lastIp !== ip) {
+      user.lastIp = ip;
+      await db.save(user);
     }
 
     if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
