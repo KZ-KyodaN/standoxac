@@ -1533,6 +1533,15 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
       if (reward.type === 'gold') {
         user.gold = (user.gold || 0) + reward.count;
         goldAdded += reward.count;
+      } else if (reward.type === 'premium') {
+        const now = new Date();
+        let expDate = new Date();
+        if (user.premiumExpiresAt && new Date(user.premiumExpiresAt) > now) {
+            expDate = new Date(user.premiumExpiresAt);
+        }
+        expDate.setDate(expDate.getDate() + reward.count);
+        user.status = 'premium';
+        user.premiumExpiresAt = expDate;
       } else {
         // Add skin item to inventoryData
         const newItem = {
