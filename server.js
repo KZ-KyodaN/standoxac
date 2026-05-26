@@ -105,6 +105,9 @@ const userSchema = new mongoose.Schema({
   clanRole: { type: String, default: "" },
   status: { type: String, default: "regular" },
   banned: { type: Boolean, default: false },
+  banReason: { type: String, default: "" },
+  banExpiresAt: { type: Date, default: null },
+  banCreatedBy: { type: String, default: "" },
   nicknameColor: { type: String, default: "" },
   premiumExpiresAt: { type: Date, default: null },
   equippedMusicKit: { type: String, default: "" }
@@ -211,7 +214,26 @@ app.use(async (req, res, next) => {
       }
 
       if (user && (user.banned === true || user.status === 'banned')) {
-        return res.status(403).json({ success: false, message: 'Акция закончилась 25.05.2026' });
+        // Check if temporary ban has expired
+        if (user.banExpiresAt && new Date(user.banExpiresAt) < new Date()) {
+          user.banned = false;
+          user.banReason = '';
+          user.banExpiresAt = null;
+          user.banCreatedBy = '';
+          await db.save(user);
+        } else {
+          // Construct details for the error dialog
+          let msg = 'Ваш аккаунт заблокирован.\n';
+          msg += `Причина: ${user.banReason || 'Нарушение правил игры'}\n`;
+          if (user.banExpiresAt) {
+            msg += `До: ${new Date(user.banExpiresAt).toLocaleString('ru-RU')}\n`;
+          } else {
+            msg += `До: Навсегда\n`;
+          }
+          msg += `Кем: ${user.banCreatedBy || 'Панель управления'}`;
+          
+          return res.status(403).json({ success: false, message: msg });
+        }
       }
     }
   } catch (err) {
