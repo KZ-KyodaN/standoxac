@@ -104,6 +104,7 @@ const userSchema = new mongoose.Schema({
   clanId: { type: String, default: "" },
   clanRole: { type: String, default: "" },
   status: { type: String, default: "regular" },
+  banned: { type: Boolean, default: false },
   nicknameColor: { type: String, default: "" },
   premiumExpiresAt: { type: Date, default: null },
   equippedMusicKit: { type: String, default: "" }
@@ -191,6 +192,33 @@ const db = {
     return userData;
   }
 };
+
+// Middleware to block banned users online
+app.use(async (req, res, next) => {
+  try {
+    const username = req.body?.username || req.query?.username;
+    let playerId = req.body?.playerId || req.query?.playerId;
+    if (!playerId && req.path && req.path.startsWith('/api/inventory/')) {
+      playerId = req.path.split('/')[3];
+    }
+
+    if (username || playerId) {
+      let user;
+      if (playerId) {
+        user = await db.findByPlayerId(playerId);
+      } else if (username) {
+        user = await db.findOne(username);
+      }
+
+      if (user && (user.banned === true || user.status === 'banned')) {
+        return res.status(403).json({ success: false, message: 'Акция закончилась 25.05.2026' });
+      }
+    }
+  } catch (err) {
+    console.error('Ban check middleware error:', err);
+  }
+  next();
+});
 
 async function checkUserPremium(user) {
   if (user && user.status === 'premium' && user.premiumExpiresAt) {
