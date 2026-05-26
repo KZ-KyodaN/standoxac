@@ -15,23 +15,6 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-// Version Control Middleware
-app.use((req, res, next) => {
-  // Always allow CORS preflight requests to pass through
-  if (req.method === 'OPTIONS') {
-    return next();
-  }
-
-  if (req.path.startsWith('/api/')) {
-    const updateKey = req.headers['x-update-key'];
-    if (updateKey !== 'STANDWEYZ-040-SECURE') {
-      // Just log it, don't block anymore to prevent issues with missing headers in older code like TradeManager
-      // console.warn(`[SECURITY] Old client version connection attempt from ${req.ip} to ${req.path}`);
-    }
-  }
-  next();
-});
-
 // Local JSON Database Setup
 const dbFilePath = path.join(__dirname, 'users.json');
 function readUsersLocal() {
@@ -248,32 +231,6 @@ function loadSkinsCatalog() {
   }
 }
 loadSkinsCatalog();
-
-// In-Memory Mutex for concurrent user state modifications to prevent dupes
-const userLocks = new Map();
-async function withUserLock(username, fn) {
-  if (!username) return await fn();
-  const normalizedUser = username.toLowerCase();
-  
-  if (!userLocks.has(normalizedUser)) {
-    userLocks.set(normalizedUser, Promise.resolve());
-  }
-
-  let resolveLock;
-  const nextLock = new Promise(resolve => { resolveLock = resolve; });
-  const currentLock = userLocks.get(normalizedUser);
-  userLocks.set(normalizedUser, currentLock.then(() => nextLock));
-
-  try {
-    await currentLock;
-    return await fn();
-  } finally {
-    resolveLock();
-    if (userLocks.get(normalizedUser) === nextLock) {
-      userLocks.delete(normalizedUser);
-    }
-  }
-}
 
 function getSkinPrice(itemName) {
   const getRarityPrice = (rarity) => {
@@ -951,7 +908,7 @@ app.post('/api/auth/register', async (req, res) => {
       username: username,
       password: hashedPassword,
       playerId: generatedPlayerId,
-      gold: 10000,
+      gold: 30000,
       kills: "0",
       deaths: "0",
       headshots: "0",
@@ -965,8 +922,7 @@ app.post('/api/auth/register', async (req, res) => {
       clanRole: "",
       status: "regular",
       nicknameColor: "",
-      premiumExpiresAt: null,
-      equippedMusicKit: ""
+      premiumExpiresAt: null
     };
 
     const savedUser = await db.create(newUser);
@@ -1131,13 +1087,12 @@ app.post('/api/auth/sync', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Username is required for sync.' });
     }
 
-    return await withUserLock(username, async () => {
-      const user = await db.findOne(username);
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found.' });
-      }
+    const user = await db.findOne(username);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
 
-      if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
+    if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
       if (newUsername.length < 3 || newUsername.length > 16) {
         return res.status(400).json({ success: false, message: 'Имя должно быть от 3 до 16 символов.' });
       }
@@ -1234,32 +1189,6 @@ app.post('/api/auth/sync', async (req, res) => {
             break;
           }
 
-          // Consume newly applied stickers to prevent duplication
-          const sStickers = Array.isArray(serverItem.Stickers) ? serverItem.Stickers : ["", "", "", ""];
-          const cStickers = Array.isArray(clientItem.Stickers) ? clientItem.Stickers : ["", "", "", ""];
-          for (let i = 0; i < 4; i++) {
-            if (cStickers[i] && cStickers[i] !== sStickers[i]) {
-              for (const [uid, sItem] of serverItemsMap.entries()) {
-                if (sItem.Name === cStickers[i]) {
-                  serverItemsMap.delete(uid);
-                  break; // consume only one
-                }
-              }
-            }
-          }
-
-          // Consume newly applied charm to prevent duplication
-          const sCharm = typeof serverItem.Charm === 'string' ? serverItem.Charm : "";
-          const cCharm = typeof clientItem.Charm === 'string' ? clientItem.Charm : "";
-          if (cCharm && cCharm !== sCharm) {
-            for (const [uid, sItem] of serverItemsMap.entries()) {
-              if (sItem.Name === cCharm) {
-                serverItemsMap.delete(uid);
-                break;
-              }
-            }
-          }
-
           const validatedItem = {
             Name: clientItem.Name,
             uid: serverItem.uid,
@@ -1279,14 +1208,21 @@ app.post('/api/auth/sync', async (req, res) => {
           if (validatedItem.Stickers.length > 4) validatedItem.Stickers = validatedItem.Stickers.slice(0, 4);
 
           validatedItems.push(validatedItem);
-          serverItemsMap.delete(clientItem.uid);
-        }
-
-        for (const remainingServerItem of serverItemsMap.values()) {
-          validatedItems.push(remainingServerItem);
         }
 
         if (isInventoryValid) {
+          // Auto-merge: restore any music kits present on server but missing in client's sync payload
+          const validatedUids = new Set(validatedItems.map(item => item.uid));
+          if (Array.isArray(serverInv.items)) {
+            for (const serverItem of serverInv.items) {
+              if (serverItem && serverItem.uid && !validatedUids.has(serverItem.uid)) {
+                const isMusicKit = serverItem.Name && MUSIC_KITS_PRICES[serverItem.Name.toLowerCase()] !== undefined;
+                if (isMusicKit) {
+                  validatedItems.push(serverItem);
+                }
+              }
+            }
+          }
           user.inventoryData = JSON.stringify({ items: validatedItems });
         } else {
           return res.status(400).json({ success: false, message: 'Invalid inventory sync request.' });
@@ -1311,7 +1247,7 @@ app.post('/api/auth/sync', async (req, res) => {
       }
       user.nicknameColor = nicknameColor;
     }
-    
+
     if (equippedMusicKit !== undefined) {
       user.equippedMusicKit = equippedMusicKit;
     }
@@ -1354,8 +1290,6 @@ app.post('/api/auth/sync', async (req, res) => {
         premiumExpiresAt: user.premiumExpiresAt || null,
         equippedMusicKit: user.equippedMusicKit || ""
       }
-    });
-
     });
 
   } catch (error) {
@@ -1533,15 +1467,6 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
       if (reward.type === 'gold') {
         user.gold = (user.gold || 0) + reward.count;
         goldAdded += reward.count;
-      } else if (reward.type === 'premium') {
-        const now = new Date();
-        let expDate = new Date();
-        if (user.premiumExpiresAt && new Date(user.premiumExpiresAt) > now) {
-            expDate = new Date(user.premiumExpiresAt);
-        }
-        expDate.setDate(expDate.getDate() + reward.count);
-        user.status = 'premium';
-        user.premiumExpiresAt = expDate;
       } else {
         // Add skin item to inventoryData
         const newItem = {
@@ -1591,39 +1516,7 @@ app.post('/api/auth/redeem-promo', async (req, res) => {
   }
 });
 
-const MUSIC_KITS = [
-  "gazan-67", "gazan-cher", "halozy-snow", "kurarin", "legacy-slowed-down", "marisa-stole", "pokoe"
-];
-
-function fixCorruptedInventory(user) {
-  if (user.inventoryData) {
-    try {
-      let inv = JSON.parse(user.inventoryData);
-      let changed = false;
-      if (inv && inv.items) {
-        for (let i = 0; i < inv.items.length; i++) {
-          let item = inv.items[i];
-          if (item && item.Name && MUSIC_KITS.includes(item.Name)) {
-            // It's a music kit that was accidentally added as a skin!
-            // Save the ID in Charm/uid so the MusicKit UI still sees it via Contains()
-            item.Charm = item.Name;
-            item.Name = "G22_Nest"; // Replace with a valid skin so InventoryTabController doesn't crash
-            changed = true;
-          }
-        }
-      }
-      if (changed) {
-        user.inventoryData = JSON.stringify(inv);
-      }
-    } catch (e) {}
-  }
-}
-
-// Ensure sensitive data is not leaked to clients
 function sanitizeUser(user) {
-  fixCorruptedInventory(user);
-  if (user.password) delete user.password;
-  if (user.deviceIds) delete user.deviceIds;
   if (!user.friends) user.friends = [];
   if (!user.friendRequests) user.friendRequests = [];
   if (!user.blocked) user.blocked = [];
@@ -2478,6 +2371,9 @@ app.post('/api/trades/create', async (req, res) => {
       if (item.isTradeFrozen) {
         return res.status(400).json({ success: false, message: 'Одна или несколько ваших вещей уже находятся в другом трейде.' });
       }
+      if (item.IsEquipped) {
+        return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
+      }
       itemsToTrade.push(item);
     }
 
@@ -2487,6 +2383,9 @@ app.post('/api/trades/create', async (req, res) => {
       const item = receiverInventory.items.find(i => i.uid === uid);
       if (!item) {
         return res.status(400).json({ success: false, message: 'Запрошенная вещь у друга не найдена.' });
+      }
+      if (item.IsEquipped) {
+        return res.status(400).json({ success: false, message: 'Друг сейчас надел эту вещь.' });
       }
     }
 
@@ -2589,7 +2488,7 @@ app.post('/api/trades/accept', async (req, res) => {
     const itemsToMoveToSender = [];
     receiverInv.items = receiverInv.items.filter(item => {
       if (safeReceiverItems.includes(item.uid)) {
-        if (item.isTradeFrozen) {
+        if (item.isTradeFrozen || item.IsEquipped) {
           return true; // Cannot move this item right now
         }
         item.isTradeFrozen = false;
@@ -2670,6 +2569,16 @@ app.post('/api/trades/decline', async (req, res) => {
 });
 
 // Skins that cannot be purchased from market or pack shop (administrative/exclusive skins)
+const MUSIC_KITS_PRICES = {
+  "gazan-67": 14000,
+  "gazan-cher": 6500,
+  "halozy-snow": 3500,
+  "kurarin": 15000,
+  "legacy-slowed-down": 9000,
+  "marisa-stole": 9000,
+  "pokoe": 5000
+};
+
 const BLOCKED_FROM_SALE_SKINS = [
   "Karambit_Crysg" // Add the Unity asset name of your secret skin here
 ];
@@ -2783,7 +2692,8 @@ app.post('/api/match/reward', async (req, res) => {
         status: user.status || "regular",
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
-        clanTagColor: clanTagColor
+        clanTagColor: clanTagColor,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -2807,12 +2717,10 @@ app.post('/api/packs/purchase', async (req, res) => {
     }
 
     let computedPrice = 0;
-    let hasCases = false;
     for (const item of items) {
       if (!item || !item.name) continue;
       const name = item.name.toLowerCase();
       if (name.includes('case') || name.includes('box')) {
-        hasCases = true;
         let itemPrice = 100;
         if (name.includes('origin') && name.includes('case')) {
           itemPrice = 1000;
@@ -2822,41 +2730,13 @@ app.post('/api/packs/purchase', async (req, res) => {
           itemPrice = 1000;
         }
         computedPrice += itemPrice;
+      } else if (MUSIC_KITS_PRICES[name]) {
+        computedPrice += MUSIC_KITS_PRICES[name];
       }
-    }
-
-    if (!hasCases && items.length > 0) {
-      // It's a skin collection/pack, use the client's provided price
-      computedPrice = price;
-      if (computedPrice <= 0) {
-        return res.status(400).json({ success: false, message: 'Invalid price for pack.' });
-      }
-    }
-
-    // Anti-dupe/economy protection: Ensure the pack cost is strictly greater than the total sell value of its items
-    let totalSellValue = 0;
-    for (const item of items) {
-      if (!item || !item.name) continue;
-      const basePrice = getSkinPrice(item.name);
-      totalSellValue += Math.round(basePrice * 0.5); // Normal item sell value
-      if (item.canBeInStatTrack) {
-        totalSellValue += Math.round((basePrice + 50) * 0.5); // StatTrack item sell value
-      }
-    }
-
-    if (computedPrice <= totalSellValue) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Покупка этого набора временно недоступна из-за ошибки в экономике (цена ниже стоимости продажи).' 
-      });
     }
 
     if (user.gold < computedPrice) {
       return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
-    }
-
-    if (computedPrice === 6000) {
-      return res.status(400).json({ success: false, message: 'Купить акцию уже нельзя. Дата завершения продаж: 25.05.2026' });
     }
 
     // Anti-cheat: verify no blocked skins are being purchased
@@ -2909,7 +2789,6 @@ app.post('/api/packs/purchase', async (req, res) => {
     }
 
     user.inventoryData = JSON.stringify(inventory);
-    fixCorruptedInventory(user);
     await db.save(user);
 
     let clanTag = "";
@@ -2945,7 +2824,8 @@ app.post('/api/packs/purchase', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -2963,9 +2843,8 @@ app.post('/api/market/buy', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required parameters.' });
     }
 
-    return await withUserLock(username, async () => {
-      const user = await db.findOne(username);
-      if (!user) {
+    const user = await db.findOne(username);
+    if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
@@ -3042,9 +2921,9 @@ app.post('/api/market/buy', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
-    });
     });
 
   } catch (error) {
@@ -3137,7 +3016,8 @@ app.post('/api/inventory/open-case', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
     });
 
@@ -3155,9 +3035,8 @@ app.post('/api/market/sell', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required parameters.' });
     }
 
-    return await withUserLock(username, async () => {
-      const user = await db.findOne(username);
-      if (!user) {
+    const user = await db.findOne(username);
+    if (!user) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
@@ -3222,9 +3101,9 @@ app.post('/api/market/sell', async (req, res) => {
         nicknameColor: user.nicknameColor || "",
         clanTag: clanTag,
         clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null
+        premiumExpiresAt: user.premiumExpiresAt || null,
+        equippedMusicKit: user.equippedMusicKit || ""
       }
-    });
     });
 
   } catch (error) {
@@ -3245,8 +3124,8 @@ app.get('/api/inventory/:playerId', async (req, res) => {
       try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) { }
     }
 
-    // Filter out frozen items from what we send back to ensure accurate picking
-    const availableItems = inventory.items.filter(i => !i.isTradeFrozen);
+    // Filter out equipped and frozen items from what we send back to ensure accurate picking
+    const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
 
     return res.json({ success: true, inventory: availableItems });
   } catch (e) {
