@@ -284,6 +284,27 @@ function loadSkinsCatalog() {
 }
 loadSkinsCatalog();
 
+const isHalloweenCharm = (itemName) => {
+  if (!itemName) return false;
+  const name = itemName.toLowerCase();
+  const HALLOWEEN_CHARMS = [
+    'meteor',
+    'horseman',
+    'friendly',
+    'brainless',
+    'crunch',
+    'witchcraft',
+    'scarecrow',
+    'crooked',
+    'vampire',
+    'spooky',
+    'pumpkin',
+    'suspicious',
+    'reaper'
+  ];
+  return name.includes('charm') && HALLOWEEN_CHARMS.some(charm => name.includes(charm));
+};
+
 function getSkinPrice(itemName) {
   const getRarityPrice = (rarity) => {
     switch (rarity) {
@@ -2820,7 +2841,7 @@ app.post('/api/packs/purchase', async (req, res) => {
         computedPrice += itemPrice;
       } else if (MUSIC_KITS_PRICES[name]) {
         computedPrice += MUSIC_KITS_PRICES[name];
-      } else if (name.includes('halloween')) {
+      } else if (isHalloweenCharm(item.name)) {
         computedPrice += 990;
       } else {
         computedPrice += (price !== undefined && Number(price) > 0) ? Number(price) : 990;
@@ -3159,21 +3180,9 @@ app.post('/api/market/sell', async (req, res) => {
     const finalPrice = isStatTrack ? (basePrice + 50) : basePrice;
     let authoritativeGoldReward = Math.round(finalPrice * 0.5);
 
-    // Exploit prevention: Sell Halloween items for 10-50 gold based on rarity
-    if (soldItem.Name && soldItem.Name.toLowerCase().includes('halloween')) {
-      const skin = skinsMap[soldItem.Name.toLowerCase()];
-      const rarity = skin ? skin.rarity : 'Common';
-      switch (rarity) {
-        case 'Common': authoritativeGoldReward = 10; break;
-        case 'Uncommon': authoritativeGoldReward = 20; break;
-        case 'Rare': authoritativeGoldReward = 30; break;
-        case 'Epic': authoritativeGoldReward = 40; break;
-        case 'Legendary':
-        case 'Arcane':
-          authoritativeGoldReward = 50; break;
-        default:
-          authoritativeGoldReward = 15;
-      }
+    // Exploit prevention: Sell Halloween items for a random price from 10 to 50 gold
+    if (isHalloweenCharm(soldItem.Name)) {
+      authoritativeGoldReward = Math.floor(Math.random() * 41) + 10;
     }
 
     inventory.items = inventory.items.filter(item => item.uid !== itemUid);
