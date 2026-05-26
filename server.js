@@ -215,24 +215,69 @@ app.use(async (req, res, next) => {
         user = await db.findOne(username);
       }
 
-      if (user && (user.banned === true || user.status === 'banned')) {
+      let isBanned = false;
+      let banReason = 'Нарушение правил игры';
+      let banExpiresAt = null;
+      let banCreatedBy = 'Античит';
+
+      if (user) {
+        // 1. Check direct User status
+        if (user.banned === true || user.status === 'banned') {
+          isBanned = true;
+          banReason = user.banReason;
+          banExpiresAt = user.banExpiresAt;
+          banCreatedBy = user.banCreatedBy;
+        }
+        
+        // 2. Cross-reference with banDb (checks by playerId and lastHwid)
+        if (!isBanned) {
+          const queryOr = [];
+          if (user.playerId) queryOr.push({ userId: user.playerId });
+          if (user.lastHwid) queryOr.push({ hwid: user.lastHwid });
+          
+          if (queryOr.length > 0) {
+            const activeBan = await banDb.findOne({
+              $or: queryOr,
+              $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }]
+            });
+            
+            if (activeBan) {
+              isBanned = true;
+              banReason = activeBan.reason || 'Auto-Ban: Detected Violation';
+              banExpiresAt = activeBan.expiresAt;
+              banCreatedBy = 'Античит';
+              
+              // Sync user document
+              user.banned = true;
+              user.banReason = banReason;
+              user.banExpiresAt = banExpiresAt;
+              user.banCreatedBy = banCreatedBy;
+              await db.save(user);
+            }
+          }
+        }
+      }
+
+      if (isBanned) {
         // Check if temporary ban has expired
-        if (user.banExpiresAt && new Date(user.banExpiresAt) < new Date()) {
-          user.banned = false;
-          user.banReason = '';
-          user.banExpiresAt = null;
-          user.banCreatedBy = '';
-          await db.save(user);
+        if (banExpiresAt && new Date(banExpiresAt) < new Date()) {
+          if (user) {
+            user.banned = false;
+            user.banReason = '';
+            user.banExpiresAt = null;
+            user.banCreatedBy = '';
+            await db.save(user);
+          }
         } else {
           // Construct details for the error dialog
           let msg = 'Ваш аккаунт заблокирован.\n';
-          msg += `Причина: ${user.banReason || 'Нарушение правил игры'}\n`;
-          if (user.banExpiresAt) {
-            msg += `До: ${new Date(user.banExpiresAt).toLocaleString('ru-RU')}\n`;
+          msg += `Причина: ${banReason || 'Нарушение правил игры'}\n`;
+          if (banExpiresAt) {
+            msg += `До: ${new Date(banExpiresAt).toLocaleString('ru-RU')}\n`;
           } else {
             msg += `До: Навсегда\n`;
           }
-          msg += `Кем: ${user.banCreatedBy || 'Панель управления'}`;
+          msg += `Кем: ${banCreatedBy || 'Панель управления'}`;
           
           return res.status(403).json({ success: false, message: msg });
         }
@@ -1218,9 +1263,44 @@ app.post('/api/auth/sync', async (req, res) => {
     // ANTI-CHEAT: Client is NO LONGER allowed to overwrite their Gold balance!
     // if (gold !== undefined) user.gold = gold;
 
-    if (kills !== undefined) user.kills = kills;
+    if (kills !== undefined) {
+      const newKills = parseInt(kills) || 0;
+      const oldKills = parseInt(user.kills) || 0;
+      if (newKills >= oldKills) {
+        user.kills = String(newKills);
+      }
+    }
     if (deaths !== undefined) user.deaths = deaths;
-    if (headshots !== undefined) user.headshots = headshots;
+    if (headshots !== undefined) {
+      const newHeadshots = parseInt(headshots) || 0;
+      const oldHeadshots = parseInt(user.headshots) || 0;
+      if (newHeadshots >= oldHeadshots) {
+        user.headshots = String(newHeadshots);
+      }
+    }
+
+    // Telemetry Telemetry Validation: Check for impossible headshot ratio
+    const currentKills = parseInt(user.kills) || 0;
+    const currentHeadshots = parseInt(user.headshots) || 0;
+    if (currentKills > 50) {
+      if (currentHeadshots > currentKills || (currentKills >= 50 && currentHeadshots === currentKills)) {
+        user.banned = true;
+        user.banReason = "Auto-Ban: Telemetry Anomaly (Aimbot/SilentAim)";
+        user.banExpiresAt = null;
+        user.banCreatedBy = "Античит";
+        await db.save(user);
+        
+        await banDb.create({
+          userId: user.playerId,
+          hwid: user.lastHwid || "",
+          reason: `Auto-Ban: Telemetry Anomaly (Aimbot/SilentAim)`,
+          severity: 3,
+          expiresAt: null
+        });
+        
+        return res.status(403).json({ success: false, message: "Ваш аккаунт заблокирован.\nПричина: Auto-Ban: Telemetry Anomaly (Aimbot/SilentAim)\nДо: Навсегда\nКем: Античит" });
+      }
+    }
     if (avatar !== undefined) {
       if (avatar.length > 7500000) {
         return res.status(400).json({ success: false, message: 'Аватарка не должна превышать 5 МБ.' });
