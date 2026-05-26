@@ -228,25 +228,25 @@ app.use(async (req, res, next) => {
           banExpiresAt = user.banExpiresAt;
           banCreatedBy = user.banCreatedBy;
         }
-        
+
         // 2. Cross-reference with banDb (checks by playerId and lastHwid)
         if (!isBanned) {
           const queryOr = [];
           if (user.playerId) queryOr.push({ userId: user.playerId });
           if (user.lastHwid) queryOr.push({ hwid: user.lastHwid });
-          
+
           if (queryOr.length > 0) {
             const activeBan = await banDb.findOne({
               $or: queryOr,
               $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }]
             });
-            
+
             if (activeBan) {
               isBanned = true;
               banReason = activeBan.reason || 'Auto-Ban: Detected Violation';
               banExpiresAt = activeBan.expiresAt;
               banCreatedBy = 'Античит';
-              
+
               // Sync user document
               user.banned = true;
               user.banReason = banReason;
@@ -278,7 +278,7 @@ app.use(async (req, res, next) => {
             msg += `До: Навсегда\n`;
           }
           msg += `Кем: ${banCreatedBy || 'Панель управления'}`;
-          
+
           return res.status(403).json({ success: false, message: msg });
         }
       }
@@ -1289,7 +1289,7 @@ app.post('/api/auth/sync', async (req, res) => {
         user.banExpiresAt = null;
         user.banCreatedBy = "Античит";
         await db.save(user);
-        
+
         await banDb.create({
           userId: user.playerId,
           hwid: user.lastHwid || "",
@@ -1297,7 +1297,7 @@ app.post('/api/auth/sync', async (req, res) => {
           severity: 3,
           expiresAt: null
         });
-        
+
         return res.status(403).json({ success: false, message: "Ваш аккаунт заблокирован.\nПричина: Auto-Ban: Telemetry Anomaly (Aimbot/SilentAim)\nДо: Навсегда\nКем: Античит" });
       }
     }
@@ -1496,7 +1496,7 @@ app.post('/api/auth/buy-premium', async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    const cost = 15000;
+    const cost = 50000;
     if (user.gold < cost) {
       return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
     }
