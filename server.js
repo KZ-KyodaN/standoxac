@@ -3036,6 +3036,7 @@ app.post('/api/market/buy', async (req, res) => {
         premiumExpiresAt: user.premiumExpiresAt || null
       }
     });
+    });
 
   } catch (error) {
     console.error('Market buy error:', error);
@@ -3214,6 +3215,7 @@ app.post('/api/market/sell', async (req, res) => {
         clanTagColor: clanTagColor,
         premiumExpiresAt: user.premiumExpiresAt || null
       }
+    });
     });
 
   } catch (error) {
