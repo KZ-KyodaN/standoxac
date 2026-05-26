@@ -1,3153 +1,341 @@
+// server.js — Standox Admin Panel Express Server
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const bcrypt = require('bcryptjs');
-const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/standweyz';
+const PORT = process.env.PORT || 4000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kyodan:kika8989@standox.kaplhfc.mongodb.net/test?appName=standox';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const TOKEN_SECRET = 'standox-super-admin-key-2026';
 
 app.use(cors());
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Local JSON Database Setup
-const dbFilePath = path.join(__dirname, 'users.json');
-function readUsersLocal() {
-  if (!fs.existsSync(dbFilePath)) {
-    fs.writeFileSync(dbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-}
-function writeUsersLocal(users) {
-  fs.writeFileSync(dbFilePath, JSON.stringify(users, null, 2));
-}
-
-// Local JSON Promocodes Database Setup
-const promocodeDbFilePath = path.join(__dirname, 'promocodes.json');
-function readPromocodesLocal() {
-  if (!fs.existsSync(promocodeDbFilePath)) {
-    fs.writeFileSync(promocodeDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(promocodeDbFilePath, 'utf8'));
-}
-function writePromocodesLocal(promos) {
-  fs.writeFileSync(promocodeDbFilePath, JSON.stringify(promos, null, 2));
-}
-
-// Local JSON Bans Setup
-const banDbFilePath = path.join(__dirname, 'bans.json');
-function readBansLocal() {
-  if (!fs.existsSync(banDbFilePath)) {
-    fs.writeFileSync(banDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(banDbFilePath, 'utf8'));
-}
-function writeBansLocal(bans) {
-  fs.writeFileSync(banDbFilePath, JSON.stringify(bans, null, 2));
-}
-
-// Local JSON Security Logs Setup
-const logDbFilePath = path.join(__dirname, 'security_logs.json');
-function readLogsLocal() {
-  if (!fs.existsSync(logDbFilePath)) {
-    fs.writeFileSync(logDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(logDbFilePath, 'utf8'));
-}
-function writeLogsLocal(logs) {
-  fs.writeFileSync(logDbFilePath, JSON.stringify(logs, null, 2));
-}
-
-// Local JSON Transaction Receipts Setup
-const receiptDbFilePath = path.join(__dirname, 'receipts.json');
-function readReceiptsLocal() {
-  if (!fs.existsSync(receiptDbFilePath)) {
-    fs.writeFileSync(receiptDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(receiptDbFilePath, 'utf8'));
-}
-function writeReceiptsLocal(receipts) {
-  fs.writeFileSync(receiptDbFilePath, JSON.stringify(receipts, null, 2));
-}
-
-let isUsingLocalJson = false;
-
-// Connect to MongoDB with timeout
-console.log('Connecting to MongoDB...');
-mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 2500 })
+// ── Connect to MongoDB ────────────────────────────────────────────────────────
+mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 })
   .then(() => console.log('Successfully connected to MongoDB.'))
   .catch(err => {
-    console.warn('Could not connect to MongoDB. Falling back to local JSON database (users.json)...');
-    isUsingLocalJson = true;
+    console.error('Failed to connect to MongoDB:', err.message);
   });
 
-// User Model Schema (Mongoose)
+// ── Models ────────────────────────────────────────────────────────────────────
 const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  username: { type: String, required: true },
+  password: { type: String },
   playerId: { type: String, required: true },
-  gold: { type: Number, default: 30000 },
+  gold: { type: Number, default: 0 },
   kills: { type: String, default: "0" },
   deaths: { type: String, default: "0" },
   headshots: { type: String, default: "0" },
-  avatar: { type: String, default: "" }, // Base64 string
-  inventoryData: { type: String, default: "" }, // JSON string
-  friends: { type: [String], default: [] },
-  friendRequests: { type: [String], default: [] },
-  blocked: { type: [String], default: [] },
-  activeRoomId: { type: String, default: "" },
-  clanId: { type: String, default: "" },
-  clanRole: { type: String, default: "" },
+  avatar: { type: String, default: "" },
+  inventoryData: { type: String, default: "" },
   status: { type: String, default: "regular" },
   nicknameColor: { type: String, default: "" },
-  premiumExpiresAt: { type: Date, default: null },
-  equippedMusicKit: { type: String, default: "" }
-});
+  premiumExpiresAt: { type: Date, default: null }
+}, { strict: false, collection: 'users' });
 
-const User = mongoose.model('User', userSchema);
-
-// DB Wrapper for handling transparent fallback
-const db = {
-  findOne: async (username) => {
-    let user;
-    if (!isUsingLocalJson) {
-      try {
-        user = await User.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
-      } catch (err) {
-        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    if (isUsingLocalJson) {
-      const users = readUsersLocal();
-      const regex = new RegExp(`^${username}$`, 'i');
-      user = users.find(u => regex.test(u.username));
-    }
-    if (user) {
-      user = await checkUserPremium(user);
-    }
-    return user;
-  },
-
-  findByPlayerId: async (playerId) => {
-    let user;
-    if (!isUsingLocalJson) {
-      try {
-        user = await User.findOne({ playerId: playerId });
-      } catch (err) {
-        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    if (isUsingLocalJson) {
-      const users = readUsersLocal();
-      user = users.find(u => u.playerId === playerId);
-    }
-    if (user) {
-      user = await checkUserPremium(user);
-    }
-    return user;
-  },
-
-  create: async (userData) => {
-    if (!isUsingLocalJson) {
-      try {
-        const newUser = new User(userData);
-        await newUser.save();
-        return newUser;
-      } catch (err) {
-        console.warn('Mongoose save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const users = readUsersLocal();
-    users.push(userData);
-    writeUsersLocal(users);
-    return userData;
-  },
-
-  save: async (userData) => {
-    if (!isUsingLocalJson && userData.save) {
-      try {
-        return await userData.save();
-      } catch (err) {
-        console.warn('Mongoose save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const users = readUsersLocal();
-    const idx = users.findIndex(u => u.username.toLowerCase() === userData.username.toLowerCase());
-    if (idx !== -1) {
-      users[idx] = userData;
-    } else {
-      users.push(userData);
-    }
-    writeUsersLocal(users);
-    return userData;
-  }
-};
-
-async function checkUserPremium(user) {
-  if (user && user.status === 'premium' && user.premiumExpiresAt) {
-    const now = new Date();
-    if (new Date(user.premiumExpiresAt) < now) {
-      user.status = 'regular';
-      user.premiumExpiresAt = null;
-      user.nicknameColor = '';
-      await db.save(user);
-      console.log(`[PREMIUM] Subscription expired for user ${user.username}. Reverted to regular.`);
-    }
-  }
-  return user;
-}
-
-// Load Skins Catalog exported from Unity Editor
-const skinsCatalogPath = path.join(__dirname, 'skins_catalog.json');
-let skinsMap = {};
-
-function loadSkinsCatalog() {
-  if (fs.existsSync(skinsCatalogPath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(skinsCatalogPath, 'utf8'));
-      if (data && Array.isArray(data.skins)) {
-        skinsMap = {};
-        data.skins.forEach(s => {
-          if (s && s.name) {
-            skinsMap[s.name.toLowerCase()] = { rarity: s.rarity, price: s.price };
-          }
-        });
-        console.log(`[ECONOMY] Loaded ${Object.keys(skinsMap).length} skins from catalog.`);
-      }
-    } catch (e) {
-      console.error('[ECONOMY] Failed to parse skins_catalog.json:', e);
-    }
-  } else {
-    console.warn('[ECONOMY] skins_catalog.json not found. Run "StandWeyz/Export Skins Catalog to Server" in Unity.');
-  }
-}
-loadSkinsCatalog();
-
-function getSkinPrice(itemName) {
-  const getRarityPrice = (rarity) => {
-    switch (rarity) {
-      case 'Common': return 50;
-      case 'Uncommon': return 100;
-      case 'Rare': return 300;
-      case 'Epic': return 650;
-      case 'Legendary': return 1150;
-      case 'Arcane': return 2500;
-      default: return 10;
-    }
-  };
-
-  if (!itemName) return 10;
-  const skin = skinsMap[itemName.toLowerCase()];
-  if (skin) {
-    if (skin.price > 0) {
-      return Math.round(skin.price);
-    }
-    return getRarityPrice(skin.rarity);
-  }
-  return 10;
-}
-
-// Promocode Model Schema (Mongoose)
 const promocodeSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true },
   rewards: [{ type: { type: String }, count: Number }],
-  maxActivations: { type: Number, default: 0 }, // 0 = unlimited
+  maxActivations: { type: Number, default: 0 },
   currentActivations: { type: Number, default: 0 },
-  expirationDate: { type: String, default: null }, // null = unlimited (ISO string or YYYY-MM-DD)
-  usedBy: [{ type: String }] // array of usernames in lowercase
-});
+  expirationDate: { type: String, default: null },
+  usedBy: [{ type: String }]
+}, { strict: false, collection: 'promocodes' });
 
+const User = mongoose.model('User', userSchema);
 const Promocode = mongoose.model('Promocode', promocodeSchema);
 
-// DB Wrapper for Promocodes
-const promoDb = {
-  findOne: async (code) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await Promocode.findOne({ code: { $regex: new RegExp(`^${code}$`, 'i') } });
-      } catch (err) {
-        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const promos = readPromocodesLocal();
-    const regex = new RegExp(`^${code}$`, 'i');
-    return promos.find(p => regex.test(p.code));
-  },
-
-  save: async (promoData) => {
-    if (!isUsingLocalJson && promoData.save) {
-      try {
-        return await promoData.save();
-      } catch (err) {
-        console.warn('Mongoose save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const promos = readPromocodesLocal();
-    const idx = promos.findIndex(p => p.code.toLowerCase() === promoData.code.toLowerCase());
-    if (idx !== -1) {
-      promos[idx] = promoData;
-    } else {
-      promos.push(promoData);
-    }
-    writePromocodesLocal(promos);
-    return promoData;
+// ── Auth Middleware ───────────────────────────────────────────────────────────
+function authAdmin(req, res, next) {
+  const token = req.headers['authorization'] || req.headers['x-admin-key'];
+  if (!token || token !== TOKEN_SECRET) {
+    return res.status(401).json({ success: false, message: 'Неавторизован. Пожалуйста, войдите снова.' });
   }
-};
-
-// Seed default promocode if none exists
-async function seedDefaultPromocodes() {
-  try {
-    const giftPromo = await promoDb.findOne('GIFT');
-    if (!giftPromo) {
-      const defaultPromo = {
-        code: 'GIFT',
-        rewards: [
-          { type: 'gold', count: 5000 },
-          { type: 'AKR12_Aurora', count: 1 }
-        ],
-        maxActivations: 100,
-        currentActivations: 0,
-        expirationDate: '2026-12-31',
-        usedBy: []
-      };
-      if (!isUsingLocalJson) {
-        const p = new Promocode(defaultPromo);
-        await p.save();
-      } else {
-        const promos = readPromocodesLocal();
-        promos.push(defaultPromo);
-        writePromocodesLocal(promos);
-      }
-      console.log('Seeded default promo code: GIFT');
-    }
-  } catch (err) {
-    console.error('Error seeding default promo codes:', err);
-  }
-}
-// Clan Model Schema (Mongoose)
-const clanSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
-  tag: { type: String, required: true },
-  avatarUrl: { type: String, default: "" },
-  description: { type: String, default: "" },
-  ownerId: { type: String, required: true },
-  members: [{
-    playerId: { type: String, required: true },
-    role: { type: String, default: "member" }
-  }],
-  pendingRequests: { type: [String], default: [] },
-  slotsLimit: { type: Number, default: 25 },
-  type: { type: String, default: "open" },
-  isPremium: { type: Boolean, default: false },
-  tagColor: { type: String, default: "#bfbfbf" },
-  premiumExpiresAt: { type: Date, default: null }
-});
-
-const Clan = mongoose.model('Clan', clanSchema);
-
-// TradeOffer Model Schema (Mongoose)
-const tradeOfferSchema = new mongoose.Schema({
-  senderUsername: { type: String, required: true },
-  receiverPlayerId: { type: String, required: true },
-  senderItems: [String], // Array of uids
-  receiverItems: [String], // Array of uids from receiver
-  senderItemNames: [String],
-  receiverItemNames: [String],
-  status: { type: String, default: "pending" }, // pending, accepted, declined, cancelled
-  createdAt: { type: Date, default: Date.now }
-});
-
-const TradeOffer = mongoose.model('TradeOffer', tradeOfferSchema);
-
-// Ban Model Schema
-const banSchema = new mongoose.Schema({
-  userId: { type: String, required: true },
-  hwid: { type: String, required: true },
-  reason: { type: String, required: true },
-  severity: { type: Number, required: true },
-  expiresAt: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now }
-});
-const Ban = mongoose.model('Ban', banSchema);
-
-// Security Log Model Schema
-const securityLogSchema = new mongoose.Schema({
-  userId: { type: String, required: true },
-  hwid: { type: String },
-  violationType: { type: String, required: true },
-  severity: { type: Number, required: true },
-  details: { type: String },
-  timestamp: { type: Date, default: Date.now }
-});
-const SecurityLog = mongoose.model('SecurityLog', securityLogSchema);
-
-// Transaction Receipt Model Schema (Anti-Replay)
-const transactionReceiptSchema = new mongoose.Schema({
-  requestId: { type: String, required: true, unique: true },
-  userId: { type: String, required: true },
-  action: { type: String, required: true },
-  amount: { type: Number, required: true },
-  timestamp: { type: Date, default: Date.now }
-});
-const TransactionReceipt = mongoose.model('TransactionReceipt', transactionReceiptSchema);
-
-const banDb = {
-  findOne: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await Ban.findOne(query);
-      } catch (err) {
-        console.warn('Mongoose query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const bans = readBansLocal();
-    return bans.find(b => {
-      let match = true;
-      if (query.$or) {
-        match = query.$or.some(cond => {
-          for (const key in cond) {
-            if (b[key] !== cond[key]) return false;
-          }
-          return true;
-        });
-      } else {
-        for (const key in query) {
-          if (b[key] !== query[key]) match = false;
-        }
-      }
-      return match;
-    });
-  },
-  create: async (data) => {
-    if (!isUsingLocalJson) {
-      try {
-        const b = new Ban(data);
-        await b.save();
-        return b;
-      } catch (err) {
-        isUsingLocalJson = true;
-      }
-    }
-    const bans = readBansLocal();
-    bans.push(data);
-    writeBansLocal(bans);
-    return data;
-  }
-};
-
-const logDb = {
-  createMany: async (logs) => {
-    if (!isUsingLocalJson) {
-      try {
-        await SecurityLog.insertMany(logs);
-        return true;
-      } catch (err) {
-        isUsingLocalJson = true;
-      }
-    }
-    const localLogs = readLogsLocal();
-    localLogs.push(...logs);
-    writeLogsLocal(localLogs);
-    return true;
-  }
-};
-
-const receiptDb = {
-  findOne: async (query) => {
-    if (!isUsingLocalJson) {
-      try { return await TransactionReceipt.findOne(query); } catch (e) { isUsingLocalJson = true; }
-    }
-    const receipts = readReceiptsLocal();
-    return receipts.find(r => r.requestId === query.requestId);
-  },
-  create: async (data) => {
-    if (!isUsingLocalJson) {
-      try { const r = new TransactionReceipt(data); await r.save(); return r; } catch (e) { isUsingLocalJson = true; }
-    }
-    const receipts = readReceiptsLocal();
-    receipts.push(data);
-    writeReceiptsLocal(receipts);
-    return data;
-  }
-};
-
-const clanDbFilePath = path.join(__dirname, 'clans.json');
-function readClansLocal() {
-  if (!fs.existsSync(clanDbFilePath)) {
-    fs.writeFileSync(clanDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(clanDbFilePath, 'utf8'));
-}
-function writeClansLocal(clans) {
-  fs.writeFileSync(clanDbFilePath, JSON.stringify(clans, null, 2));
-}
-
-const tradeDbFilePath = path.join(__dirname, 'trades.json');
-function readTradesLocal() {
-  if (!fs.existsSync(tradeDbFilePath)) {
-    fs.writeFileSync(tradeDbFilePath, JSON.stringify([]));
-  }
-  return JSON.parse(fs.readFileSync(tradeDbFilePath, 'utf8'));
-}
-function writeTradesLocal(trades) {
-  fs.writeFileSync(tradeDbFilePath, JSON.stringify(trades, null, 2));
-}
-
-const tradeDb = {
-  find: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await TradeOffer.find(query);
-      } catch (err) {
-        console.warn('Mongoose trade query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const trades = readTradesLocal();
-    return trades.filter(t => {
-      let match = true;
-      for (const key in query) {
-        if (query[key] && query[key].$in) {
-          if (!query[key].$in.includes(t[key])) match = false;
-        } else if (t[key] !== query[key]) {
-          match = false;
-        }
-      }
-      return match;
-    });
-  },
-
-  findOne: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await TradeOffer.findOne(query);
-      } catch (err) {
-        console.warn('Mongoose trade query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const trades = readTradesLocal();
-    return trades.find(t => {
-      let match = true;
-      for (const key in query) {
-        if (t[key] !== query[key]) match = false;
-      }
-      return match;
-    });
-  },
-
-  create: async (tradeData) => {
-    if (!isUsingLocalJson) {
-      try {
-        const newTrade = new TradeOffer(tradeData);
-        await newTrade.save();
-        return newTrade;
-      } catch (err) {
-        console.warn('Mongoose trade save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const trades = readTradesLocal();
-    const newTrade = { ...tradeData, _id: Math.random().toString(36).substr(2, 9), createdAt: new Date() };
-    trades.push(newTrade);
-    writeTradesLocal(trades);
-    return newTrade;
-  },
-
-  save: async (tradeData) => {
-    if (!isUsingLocalJson && tradeData.save) {
-      try {
-        return await tradeData.save();
-      } catch (err) {
-        console.warn('Mongoose trade save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const trades = readTradesLocal();
-    const idx = trades.findIndex(t => t._id === tradeData._id);
-    if (idx !== -1) {
-      trades[idx] = tradeData;
-    } else {
-      trades.push(tradeData);
-    }
-    writeTradesLocal(trades);
-    return tradeData;
-  }
-};
-
-const clanDb = {
-  findOne: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await Clan.findOne(query);
-      } catch (err) {
-        console.warn('Mongoose clan query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const clans = readClansLocal();
-    if (query.name) {
-      const regex = new RegExp(`^${query.name}$`, 'i');
-      return clans.find(c => regex.test(c.name));
-    }
-    if (query.tag) {
-      const regex = new RegExp(`^${query.tag}$`, 'i');
-      return clans.find(c => regex.test(c.tag));
-    }
-    if (query._id) {
-      return clans.find(c => c._id === query._id);
-    }
-    return null;
-  },
-
-  find: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await Clan.find(query);
-      } catch (err) {
-        console.warn('Mongoose clan query failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const clans = readClansLocal();
-    if (query && query.$or) {
-      const term = query.$or[0].name.$regex.source;
-      const regex = new RegExp(term, 'i');
-      return clans.filter(c => regex.test(c.name) || regex.test(c.tag));
-    }
-    return clans;
-  },
-
-  create: async (clanData) => {
-    clanData._id = clanData._id || new mongoose.Types.ObjectId().toString();
-    if (!isUsingLocalJson) {
-      try {
-        const newClan = new Clan(clanData);
-        await newClan.save();
-        return newClan;
-      } catch (err) {
-        console.warn('Mongoose clan save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const clans = readClansLocal();
-    clans.push(clanData);
-    writeClansLocal(clans);
-    return clanData;
-  },
-
-  save: async (clanData) => {
-    if (!isUsingLocalJson && clanData.save) {
-      try {
-        return await clanData.save();
-      } catch (err) {
-        console.warn('Mongoose clan save failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    const clans = readClansLocal();
-    const idx = clans.findIndex(c => c._id.toString() === clanData._id.toString() || c.name.toLowerCase() === clanData.name.toLowerCase());
-    if (idx !== -1) {
-      clans[idx] = clanData;
-    } else {
-      clans.push(clanData);
-    }
-    writeClansLocal(clans);
-    return clanData;
-  },
-
-  deleteOne: async (query) => {
-    if (!isUsingLocalJson) {
-      try {
-        return await Clan.deleteOne(query);
-      } catch (err) {
-        console.warn('Mongoose clan delete failed, falling back to JSON db:', err.message);
-        isUsingLocalJson = true;
-      }
-    }
-    let clans = readClansLocal();
-    if (query._id) {
-      clans = clans.filter(c => c._id.toString() !== query._id.toString());
-    }
-    writeClansLocal(clans);
-    return { deletedCount: 1 };
-  }
-};
-// Call seed function after some delay to allow MongoDB to connect
-setTimeout(seedDefaultPromocodes, 3000);
-
-// Logging middleware
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
-});
-
-// Endpoint: Check Ban Status
-app.post('/api/v1/auth/check-ban', async (req, res) => {
-  try {
-    const { userId, hwid } = req.body;
-    if (!userId) return res.status(400).json({ success: false, message: 'User ID is required.' });
-
-    const activeBan = await banDb.findOne({
-      $or: [{ userId: userId }, { hwid: hwid }],
-      $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }]
-    });
-
-    if (activeBan) {
-      return res.json({
-        IsBanned: true,
-        Reason: activeBan.reason,
-        ExpiresAt: activeBan.expiresAt ? activeBan.expiresAt.toISOString() : null
-      });
-    }
-
-    res.json({ IsBanned: false });
-  } catch (error) {
-    console.error('Check ban error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Security Log Batch
-app.post('/api/v1/security/log-batch', async (req, res) => {
-  try {
-    const { logs } = req.body;
-    if (!logs || !Array.isArray(logs)) return res.status(400).send("Invalid logs");
-
-    await logDb.createMany(logs);
-
-    // Auto-Ban logic for critical violations
-    for (const log of logs) {
-      if (log.severity >= 2) { // Critical
-        await banDb.create({
-          userId: log.userId,
-          hwid: log.hwid,
-          reason: `Auto-Ban: Detected ${log.violationType}`,
-          severity: 3,
-          expiresAt: null
-        });
-        console.log(`[SECURITY] Auto-Banned User ${log.userId} for ${log.violationType}`);
-      }
-    }
-
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('Log batch error:', error);
-    res.status(500).send("Error saving log");
-  }
-});
-
-// Endpoint: Secure Economy Reward
-app.post('/api/v1/economy/reward', async (req, res) => {
-  try {
-    const { username, requestId, matchId, stats } = req.body;
-    if (!username || !requestId || !stats) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    // 1. Replay Protection: Check if requestId already processed
-    const existingReceipt = await receiptDb.findOne({ requestId: requestId });
-    if (existingReceipt) {
-      return res.status(400).json({ success: false, message: 'Duplicate transaction (Replay detected).' });
-    }
-
-    // 2. Fetch User
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    // 3. Server-Side Reward Calculation (NEVER trust client's requested gold)
-    // Formula: 15 gold per kill, +50 for win
-    let calculatedReward = 0;
-    if (stats.kills && stats.kills > 0) {
-      const validKills = Math.min(stats.kills, 50); // Cap max kills per match
-      calculatedReward += validKills * 15;
-    }
-    if (stats.win) {
-      calculatedReward += 50;
-    }
-
-    // 4. Apply atomic transaction (Simulated for Local JSON, Mongoose handles atomic doc saves nicely here)
-    user.gold = (user.gold || 0) + calculatedReward;
-    await db.save(user);
-
-    // 5. Store Receipt
-    await receiptDb.create({
-      requestId: requestId,
-      userId: user.playerId,
-      action: 'REWARD_MATCH_END',
-      amount: calculatedReward
-    });
-
-    console.log(`[ECONOMY] Granted ${calculatedReward} gold to ${username} for match ${matchId}.`);
-    return res.json({ success: true, newBalance: user.gold, rewardAdded: calculatedReward });
-  } catch (error) {
-    console.error('Reward error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Secure Economy Purchase
-app.post('/api/v1/economy/purchase', async (req, res) => {
-  try {
-    const { username, requestId, itemId } = req.body;
-    if (!username || !requestId || !itemId) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    const existingReceipt = await receiptDb.findOne({ requestId: requestId });
-    if (existingReceipt) {
-      return res.status(400).json({ success: false, message: 'Duplicate transaction (Replay detected).' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    // Server-Side Pricing Catalog (Mock)
-    const Catalog = {
-      "AKR12_Aurora": 5000,
-      "M4_Samurai": 12000,
-      "Karambit_Gold": 50000,
-      "G22_Nest": 1500
-    };
-
-    const price = Catalog[itemId];
-    if (price === undefined) {
-      return res.status(400).json({ success: false, message: 'Item not found in catalog.' });
-    }
-
-    if (user.gold < price) {
-      return res.status(400).json({ success: false, message: 'Insufficient gold.' });
-    }
-
-    // Execution
-    user.gold -= price;
-
-    let inventory = { items: [] };
-    if (user.inventoryData) {
-      try { inventory = JSON.parse(user.inventoryData); } catch (e) { }
-    }
-
-    const newItem = {
-      Name: itemId,
-      IsEquipped: false,
-      IsNew: true,
-      StatTrack: { IsStatTrack: false, Kills: 0 },
-      Stickers: ["", "", "", ""],
-      Charm: "",
-      uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-    };
-    inventory.items.push(newItem);
-
-    user.inventoryData = JSON.stringify(inventory);
-    await db.save(user);
-
-    await receiptDb.create({
-      requestId: requestId,
-      userId: user.playerId,
-      action: 'PURCHASE_ITEM',
-      amount: -price
-    });
-
-    // HMAC Signature
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(user.inventoryData);
-    const signature = hmac.digest('hex');
-
-    console.log(`[ECONOMY] User ${username} purchased ${itemId} for ${price} gold.`);
-
-    return res.json({
-      success: true,
-      newBalance: user.gold,
-      inventoryData: user.inventoryData,
-      inventorySignature: signature
-    });
-  } catch (error) {
-    console.error('Purchase error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Register
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ success: false, message: 'Username and password are required.' });
-    }
-
-    const existingUser = await db.findOne(username);
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists.' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const generatedPlayerId = Math.floor(10000000 + Math.random() * 90000000).toString(); // 8 digit ID
-
-    const defaultInventory = {
-      Items: []
-    };
-
-    const newUser = {
-      username: username,
-      password: hashedPassword,
-      playerId: generatedPlayerId,
-      gold: 30000,
-      kills: "0",
-      deaths: "0",
-      headshots: "0",
-      avatar: "",
-      inventoryData: JSON.stringify(defaultInventory),
-      friends: [],
-      friendRequests: [],
-      blocked: [],
-      activeRoomId: "",
-      clanId: "",
-      clanRole: "",
-      status: "regular",
-      nicknameColor: "",
-      premiumExpiresAt: null
-    };
-
-    const savedUser = await db.create(newUser);
-    console.log(`Registered user: ${username} (ID: ${generatedPlayerId})`);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Registration successful!',
-      user: {
-        username: savedUser.username,
-        playerId: savedUser.playerId,
-        gold: savedUser.gold,
-        kills: savedUser.kills,
-        deaths: savedUser.deaths,
-        headshots: savedUser.headshots,
-        avatar: savedUser.avatar,
-        inventoryData: savedUser.inventoryData,
-        status: savedUser.status || "regular",
-        nicknameColor: savedUser.nicknameColor || "",
-        premiumExpiresAt: savedUser.premiumExpiresAt || null,
-        equippedMusicKit: savedUser.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Login
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-      return res.status(400).json({ success: false, message: 'Username and password are required.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid username or password.' });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Invalid username or password.' });
-    }
-
-    console.log(`User logged in: ${user.username}`);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    // Generate HMAC Signature for Inventory Integrity
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Login successful!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Get Profile (Fetch latest data)
-app.post('/api/auth/profile', async (req, res) => {
-  try {
-    const { username, playerId } = req.body;
-
-    let user;
-    if (playerId) {
-      user = await db.findByPlayerId(playerId);
-    } else if (username) {
-      user = await db.findOne(username);
-    } else {
-      return res.status(400).json({ success: false, message: 'Username or PlayerId is required.' });
-    }
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    // Generate HMAC Signature for Inventory Integrity
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Fetch profile error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Sync Profile Data
-app.post('/api/auth/sync', async (req, res) => {
-  try {
-    const { username, gold, kills, deaths, headshots, avatar, inventoryData, status, nicknameColor, newUsername, equippedMusicKit } = req.body;
-
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required for sync.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
-      if (newUsername.length < 3 || newUsername.length > 16) {
-        return res.status(400).json({ success: false, message: 'Имя должно быть от 3 до 16 символов.' });
-      }
-      for (let i = 0; i < newUsername.length; i++) {
-        const char = newUsername[i];
-        if (!(/[a-zA-Z0-9]/).test(char)) {
-          return res.status(400).json({ success: false, message: 'Спец. символы в имени запрещены.' });
-        }
-      }
-
-      const existingUser = await db.findOne(newUsername);
-      if (existingUser) {
-        return res.status(400).json({ success: false, message: 'Имя уже занято.' });
-      }
-      user.username = newUsername;
-    }
-
-    // ANTI-CHEAT: Client is NO LONGER allowed to overwrite their Gold balance!
-    // if (gold !== undefined) user.gold = gold;
-
-    if (kills !== undefined) user.kills = kills;
-    if (deaths !== undefined) user.deaths = deaths;
-    if (headshots !== undefined) user.headshots = headshots;
-    if (avatar !== undefined) {
-      if (avatar.length > 7500000) {
-        return res.status(400).json({ success: false, message: 'Аватарка не должна превышать 5 МБ.' });
-      }
-
-      const isGif = avatar.startsWith('R0lGOD'); // Base64 signature for GIF89a / GIF87a
-      const currentStatus = status !== undefined ? status : user.status;
-
-      if (isGif && currentStatus !== 'premium' && currentStatus !== 'developer') {
-        return res.status(403).json({ success: false, message: 'GIF аватарки доступны только для Premium пользователей.' });
-      }
-
-      user.avatar = avatar;
-    }
-
-    // ANTI-CHEAT: Secure client inventory synchronization (allows equipping, stickers, charms, stattrack kills)
-    if (inventoryData !== undefined) {
-      let clientInv;
-      try {
-        clientInv = JSON.parse(inventoryData);
-      } catch (e) {
-        clientInv = null;
-      }
-
-      if (clientInv && Array.isArray(clientInv.items)) {
-        let serverInv = { items: [] };
-        if (user.inventoryData) {
-          try {
-            serverInv = JSON.parse(user.inventoryData);
-          } catch (e) {
-            serverInv = { items: [] };
-          }
-        }
-
-        const serverItemsMap = new Map();
-        if (Array.isArray(serverInv.items)) {
-          for (const item of serverInv.items) {
-            if (item && item.uid) {
-              serverItemsMap.set(item.uid, item);
-            }
-          }
-        }
-
-        let isInventoryValid = true;
-        const validatedItems = [];
-
-        for (const clientItem of clientInv.items) {
-          if (!clientItem || !clientItem.uid) {
-            isInventoryValid = false;
-            break;
-          }
-
-          const serverItem = serverItemsMap.get(clientItem.uid);
-          if (!serverItem) {
-            console.warn(`[ANTI-CHEAT] User ${user.username} tried to sync unowned item uid ${clientItem.uid}`);
-            isInventoryValid = false;
-            break;
-          }
-
-          if (clientItem.Name.toLowerCase() !== serverItem.Name.toLowerCase()) {
-            console.warn(`[ANTI-CHEAT] User ${user.username} tried to change item skin name from ${serverItem.Name} to ${clientItem.Name}`);
-            isInventoryValid = false;
-            break;
-          }
-
-          const serverST = serverItem.StatTrack || {};
-          const clientST = clientItem.StatTrack || {};
-          if (!!clientST.IsStatTrack !== !!serverST.IsStatTrack) {
-            console.warn(`[ANTI-CHEAT] User ${user.username} tried to spoof StatTrack status`);
-            isInventoryValid = false;
-            break;
-          }
-
-          const validatedItem = {
-            Name: clientItem.Name,
-            uid: serverItem.uid,
-            IsEquipped: !!clientItem.IsEquipped,
-            IsNew: !!clientItem.IsNew,
-            StatTrack: {
-              IsStatTrack: !!serverST.IsStatTrack,
-              Kills: typeof clientST.Kills === 'number' ? clientST.Kills : (serverST.Kills || 0)
-            },
-            Stickers: Array.isArray(clientItem.Stickers)
-              ? clientItem.Stickers.map(s => typeof s === 'string' ? s : "")
-              : ["", "", "", ""],
-            Charm: typeof clientItem.Charm === 'string' ? clientItem.Charm : ""
-          };
-
-          while (validatedItem.Stickers.length < 4) validatedItem.Stickers.push("");
-          if (validatedItem.Stickers.length > 4) validatedItem.Stickers = validatedItem.Stickers.slice(0, 4);
-
-          validatedItems.push(validatedItem);
-        }
-
-        if (isInventoryValid) {
-          // Auto-merge: restore any music kits present on server but missing in client's sync payload
-          const validatedUids = new Set(validatedItems.map(item => item.uid));
-          if (Array.isArray(serverInv.items)) {
-            for (const serverItem of serverInv.items) {
-              if (serverItem && serverItem.uid && !validatedUids.has(serverItem.uid)) {
-                const isMusicKit = serverItem.Name && MUSIC_KITS_PRICES[serverItem.Name.toLowerCase()] !== undefined;
-                if (isMusicKit) {
-                  validatedItems.push(serverItem);
-                }
-              }
-            }
-          }
-          user.inventoryData = JSON.stringify({ items: validatedItems });
-        } else {
-          return res.status(400).json({ success: false, message: 'Invalid inventory sync request.' });
-        }
-      }
-    }
-
-    if (status !== undefined) {
-      if (status === 'premium' && user.status !== 'premium') {
-        const expDate = new Date();
-        expDate.setDate(expDate.getDate() + 30);
-        user.premiumExpiresAt = expDate;
-      } else if (status !== 'premium') {
-        user.premiumExpiresAt = null;
-      }
-      user.status = status;
-    }
-    if (nicknameColor !== undefined) {
-      const currentStatus = status !== undefined ? status : user.status;
-      if (nicknameColor !== "" && currentStatus !== 'premium' && currentStatus !== 'developer') {
-        return res.status(403).json({ success: false, message: 'Цвет никнейма доступен только для Premium пользователей.' });
-      }
-      user.nicknameColor = nicknameColor;
-    }
-
-    if (equippedMusicKit !== undefined) {
-      user.equippedMusicKit = equippedMusicKit;
-    }
-
-    await db.save(user);
-    console.log(`Synced data for user: ${user.username}`);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Data synchronized successfully!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Sync error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Buy Premium for User Account
-app.post('/api/auth/buy-premium', async (req, res) => {
-  try {
-    const { username } = req.body;
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const cost = 15000;
-    if (user.gold < cost) {
-      return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
-    }
-
-    user.gold -= cost;
-
-    const now = new Date();
-    let expireDate;
-    if (user.status === 'premium' && user.premiumExpiresAt && new Date(user.premiumExpiresAt) > now) {
-      expireDate = new Date(user.premiumExpiresAt);
-      expireDate.setDate(expireDate.getDate() + 30);
-    } else {
-      expireDate = new Date();
-      expireDate.setDate(expireDate.getDate() + 30);
-    }
-
-    user.status = 'premium';
-    user.premiumExpiresAt = expireDate;
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    const expiryFormatted = expireDate.toLocaleDateString('ru-RU');
-    console.log(`[PREMIUM] User ${username} purchased Premium. Expiry set to ${expireDate.toISOString()}`);
-
-    return res.json({
-      success: true,
-      message: `Премиум успешно оформлен/продлен до ${expiryFormatted}!`,
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Buy premium error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Get User Avatar Fast
-app.get('/api/avatar/:username', async (req, res) => {
-  try {
-    const username = req.params.username;
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required.' });
-    }
-
-    // Support querying by playerId or username
-    let user = null;
-    if (username.length === 12 && !isNaN(username)) { // simple heuristics for numeric player ID
-      user = await db.findByPlayerId(username);
-    }
-
-    if (!user) {
-      user = await db.findOne(username);
-    }
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    return res.json({
-      success: true,
-      avatar: user.avatar || ""
-    });
-  } catch (error) {
-    console.error('Get avatar error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Redeem Promo Code
-app.post('/api/auth/redeem-promo', async (req, res) => {
-  try {
-    const { username, promoCode } = req.body;
-
-    if (!username || !promoCode) {
-      return res.status(400).json({ success: false, message: 'Пользователь и промокод обязательны.' });
-    }
-
-    // 1. Find user
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
-    }
-
-    // 2. Find promo code
-    const promo = await promoDb.findOne(promoCode);
-    if (!promo) {
-      return res.status(404).json({ success: false, message: 'Промокод не существует.' });
-    }
-
-    // 3. Check expiration date
-    if (promo.expirationDate) {
-      const expDate = new Date(promo.expirationDate);
-      if (new Date() > expDate) {
-        return res.status(400).json({ success: false, message: 'Срок действия промокода истек.' });
-      }
-    }
-
-    // 4. Check max activations
-    if (promo.maxActivations > 0 && promo.currentActivations >= promo.maxActivations) {
-      return res.status(400).json({ success: false, message: 'Количество активаций промокода исчерпано.' });
-    }
-
-    // 5. Check if user already used it
-    if (promo.usedBy && promo.usedBy.includes(username.toLowerCase())) {
-      return res.status(400).json({ success: false, message: 'Вы уже активировали этот промокод.' });
-    }
-
-    // 6. Apply rewards to user
-    let goldAdded = 0;
-    let itemsAdded = [];
-
-    // Parse user inventoryData
-    let inventory = { items: [] };
-    if (user.inventoryData) {
-      try {
-        inventory = JSON.parse(user.inventoryData);
-      } catch (e) {
-        inventory = { items: [] };
-      }
-    }
-
-    for (const reward of promo.rewards) {
-      if (reward.type === 'gold') {
-        user.gold = (user.gold || 0) + reward.count;
-        goldAdded += reward.count;
-      } else {
-        // Add skin item to inventoryData
-        const newItem = {
-          Name: reward.type,
-          IsEquipped: false,
-          IsNew: true,
-          StatTrack: { IsStatTrack: false, Kills: 0 },
-          Stickers: ["", "", "", ""],
-          Charm: "",
-          uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
-        };
-        inventory.items.push(newItem);
-        itemsAdded.push(reward.type);
-      }
-    }
-
-    user.inventoryData = JSON.stringify(inventory);
-
-    // 7. Update promo code status
-    promo.currentActivations = (promo.currentActivations || 0) + 1;
-    if (!promo.usedBy) promo.usedBy = [];
-    promo.usedBy.push(username.toLowerCase());
-
-    // Save changes
-    await db.save(user);
-    await promoDb.save(promo);
-
-    console.log(`User ${username} redeemed promo ${promoCode}. Gold added: ${goldAdded}. Items: ${itemsAdded.join(', ')}`);
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Промокод успешно активирован!',
-      rewards: promo.rewards,
-      inventoryData: inventoryDataStr,
-      inventorySignature: signature,
-      newBalance: user.gold
-    });
-
-  } catch (error) {
-    console.error('Redeem promo error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
-  }
-});
-
-function sanitizeUser(user) {
-  if (!user.friends) user.friends = [];
-  if (!user.friendRequests) user.friendRequests = [];
-  if (!user.blocked) user.blocked = [];
-  if (user.activeRoomId === undefined) user.activeRoomId = "";
-  if (user.clanId === undefined || user.clanId === null) user.clanId = "";
-  if (user.clanRole === undefined || user.clanRole === null) user.clanRole = "";
-  return user;
 }
 
-// Endpoint: Get list of friends, requests, and blocked users
-app.post('/api/friends/list', async (req, res) => {
+// ── Auth Endpoints ────────────────────────────────────────────────────────────
+app.post('/api/auth', (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Пароль обязателен.' });
+  }
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ success: true, token: TOKEN_SECRET });
+  } else {
+    return res.status(401).json({ success: false, message: 'Неверный пароль.' });
+  }
+});
+
+app.get('/api/auth/verify', authAdmin, (req, res) => {
+  res.json({ success: true });
+});
+
+// ── Stats Endpoint ────────────────────────────────────────────────────────────
+app.get('/api/stats', authAdmin, async (req, res) => {
   try {
-    const { playerId } = req.body;
-    if (!playerId) {
-      return res.status(400).json({ success: false, message: 'PlayerId is required.' });
-    }
+    const totalUsers = await User.countDocuments();
+    const totalPromos = await Promocode.countDocuments();
+    
+    // Calculate total gold from users
+    const goldStats = await User.aggregate([
+      { $group: { _id: null, totalGold: { $sum: "$gold" } } }
+    ]);
+    const totalGoldCirculation = goldStats[0]?.totalGold || 0;
 
-    const user = await db.findByPlayerId(playerId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    sanitizeUser(user);
-
-    const friendsProfiles = [];
-    for (const fId of user.friends) {
-      const f = await db.findByPlayerId(fId);
-      if (f) {
-        friendsProfiles.push({
-          username: f.username,
-          playerId: f.playerId,
-          activeRoomId: f.activeRoomId || "",
-          kills: f.kills || "0",
-          avatar: f.avatar || ""
-        });
-      }
-    }
-
-    const requestsProfiles = [];
-    for (const rId of user.friendRequests) {
-      const r = await db.findByPlayerId(rId);
-      if (r) {
-        requestsProfiles.push({
-          username: r.username,
-          playerId: r.playerId,
-          activeRoomId: r.activeRoomId || "",
-          kills: r.kills || "0",
-          avatar: r.avatar || ""
-        });
-      }
-    }
-
-    const blockedProfiles = [];
-    for (const bId of user.blocked) {
-      const b = await db.findByPlayerId(bId);
-      if (b) {
-        blockedProfiles.push({
-          username: b.username,
-          playerId: b.playerId,
-          activeRoomId: b.activeRoomId || "",
-          kills: b.kills || "0",
-          avatar: b.avatar || ""
-        });
-      }
-    }
-
-    return res.json({
+    res.json({
       success: true,
-      friends: friendsProfiles,
-      friendRequests: requestsProfiles,
-      blocked: blockedProfiles
+      stats: {
+        usersCount: totalUsers,
+        promosCount: totalPromos,
+        totalGold: totalGoldCirculation
+      }
     });
-
-  } catch (error) {
-    console.error('List friends error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  } catch (err) {
+    console.error('Stats error:', err);
+    res.status(500).json({ success: false, message: 'Ошибка получения статистики: ' + err.message });
   }
 });
 
-// Endpoint: Find a user profile and get relationship
-app.post('/api/friends/find', async (req, res) => {
+// ── Users Endpoints ───────────────────────────────────────────────────────────
+app.get('/api/users/search', authAdmin, async (req, res) => {
   try {
-    const { playerId, queryId } = req.body;
-    if (!playerId || !queryId) {
-      return res.status(400).json({ success: false, message: 'PlayerId and QueryId are required.' });
+    const q = req.query.q || '';
+    if (!q.trim()) {
+      return res.json({ success: true, users: [] });
     }
 
-    const requester = await db.findByPlayerId(playerId);
-    if (!requester) {
-      return res.status(404).json({ success: false, message: 'Requester not found.' });
-    }
-    sanitizeUser(requester);
+    const regex = new RegExp(q.trim(), 'i');
+    const users = await User.find({
+      $or: [
+        { username: regex },
+        { playerId: regex }
+      ]
+    }, { password: 0, avatar: 0, inventoryData: 0 }).limit(15).lean();
 
-    const target = await db.findByPlayerId(queryId);
-    if (!target) {
-      return res.status(404).json({ success: false, message: 'User with specified ID not found.' });
-    }
-    sanitizeUser(target);
-
-    let relation = "none";
-    if (requester.friends.includes(queryId)) {
-      relation = "friend";
-    } else if (target.friendRequests.includes(playerId)) {
-      relation = "requested";
-    } else if (requester.blocked.includes(queryId)) {
-      relation = "blocked";
-    }
-
-    return res.json({
-      success: true,
-      user: {
-        username: target.username,
-        playerId: target.playerId,
-        activeRoomId: target.activeRoomId || "",
-        kills: target.kills || "0",
-        avatar: target.avatar || ""
-      },
-      relation: relation
-    });
-
-  } catch (error) {
-    console.error('Find friend error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error('Search error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Endpoint: Social Action (Add, Accept, Decline, Remove, Block, Unblock)
-app.post('/api/friends/action', async (req, res) => {
+app.get('/api/user/:playerId', authAdmin, async (req, res) => {
   try {
-    const { playerId, targetId, action } = req.body;
-    if (!playerId || !targetId || !action) {
-      return res.status(400).json({ success: false, message: 'Missing parameters.' });
-    }
-
-    const requester = await db.findByPlayerId(playerId);
-    const target = await db.findByPlayerId(targetId);
-
-    if (!requester || !target) {
-      return res.status(404).json({ success: false, message: 'Requester or Target user not found.' });
-    }
-
-    sanitizeUser(requester);
-    sanitizeUser(target);
-
-    if (action === 'add') {
-      if (target.blocked.includes(playerId)) {
-        return res.status(400).json({ success: false, message: 'This user has blocked you.' });
-      }
-
-      if (requester.blocked.includes(targetId)) {
-        requester.blocked = requester.blocked.filter(id => id !== targetId);
-      }
-
-      if (requester.friends.includes(targetId)) {
-        return res.status(400).json({ success: false, message: 'Already friends.' });
-      }
-
-      if (requester.friendRequests.includes(targetId)) {
-        requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
-        if (!requester.friends.includes(targetId)) requester.friends.push(targetId);
-        if (!target.friends.includes(playerId)) target.friends.push(playerId);
-      } else {
-        if (!target.friendRequests.includes(playerId)) {
-          target.friendRequests.push(playerId);
-        }
-      }
-    }
-    else if (action === 'accept') {
-      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
-      if (!requester.friends.includes(targetId)) requester.friends.push(targetId);
-      if (!target.friends.includes(playerId)) target.friends.push(playerId);
-    }
-    else if (action === 'decline') {
-      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
-      target.friendRequests = target.friendRequests.filter(id => id !== playerId);
-    }
-    else if (action === 'remove') {
-      requester.friends = requester.friends.filter(id => id !== targetId);
-      target.friends = target.friends.filter(id => id !== playerId);
-    }
-    else if (action === 'block') {
-      if (!requester.blocked.includes(targetId)) {
-        requester.blocked.push(targetId);
-      }
-      requester.friends = requester.friends.filter(id => id !== targetId);
-      target.friends = target.friends.filter(id => id !== playerId);
-      requester.friendRequests = requester.friendRequests.filter(id => id !== targetId);
-      target.friendRequests = target.friendRequests.filter(id => id !== playerId);
-    }
-    else if (action === 'unblock') {
-      requester.blocked = requester.blocked.filter(id => id !== targetId);
-    }
-    else {
-      return res.status(400).json({ success: false, message: 'Invalid action.' });
-    }
-
-    await db.save(requester);
-    await db.save(target);
-
-    return res.json({ success: true, message: `Action ${action} completed successfully.` });
-
-  } catch (error) {
-    console.error('Execute action error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Update active room status
-app.post('/api/friends/update-room', async (req, res) => {
-  try {
-    const { playerId, activeRoomId } = req.body;
-    if (!playerId) {
-      return res.status(400).json({ success: false, message: 'PlayerId is required.' });
-    }
-
-    const user = await db.findByPlayerId(playerId);
+    const playerId = req.params.playerId.trim();
+    let user = await User.findOne({ playerId: playerId }).lean();
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
+      user = await User.findOne({ username: { $regex: new RegExp(`^${playerId}$`, 'i') } }).lean();
     }
-
-    sanitizeUser(user);
-    user.activeRoomId = activeRoomId || "";
-    await db.save(user);
-
-    return res.json({ success: true, message: 'Active room updated successfully.' });
-
-  } catch (error) {
-    console.error('Update room error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// --- CLAN SYSTEM ENDPOINTS ---
-
-// 1. Create Clan
-app.post('/api/clan/create', async (req, res) => {
-  try {
-    const { playerId, name, tag, avatarUrl } = req.body;
-
-    if (!playerId || !name || !tag) {
-      return res.status(400).json({ success: false, message: 'Все поля обязательны.' });
-    }
-
-    // Tag validation: up to 5 chars, only English letters
-    const tagRegex = /^[A-Za-z]{1,5}$/;
-    if (!tagRegex.test(tag)) {
-      return res.status(400).json({ success: false, message: 'Тег должен быть от 1 до 5 символов и содержать только латинские буквы.' });
-    }
-
-    const user = await db.findByPlayerId(playerId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
     }
-    sanitizeUser(user);
-
-    if (user.clanId) {
-      return res.status(400).json({ success: false, message: 'Вы уже состоите в клане.' });
-    }
-
-    if (user.gold < 50000) {
-      return res.status(400).json({ success: false, message: 'Недостаточно золота для создания клана (требуется 50,000 голды).' });
-    }
-
-    // Check name uniqueness
-    const existingClan = await clanDb.findOne({ name: name });
-    if (existingClan) {
-      return res.status(400).json({ success: false, message: 'Клан с таким названием уже существует.' });
-    }
-
-    // Deduct gold
-    user.gold -= 50000;
-
-    const clanData = {
-      name: name,
-      tag: tag.toUpperCase(),
-      avatarUrl: avatarUrl || "",
-      description: "Добро пожаловать в наш клан!",
-      ownerId: playerId,
-      members: [{ playerId: playerId, role: 'leader' }],
-      pendingRequests: [],
-      slotsLimit: 25,
-      type: 'open',
-      isPremium: false,
-      tagColor: '#bfbfbf',
-      premiumExpiresAt: null
-    };
-
-    const newClan = await clanDb.create(clanData);
-
-    user.clanId = newClan._id.toString();
-    user.clanRole = 'leader';
-
-    await db.save(user);
-
-    return res.json({
-      success: true,
-      message: 'Клан успешно создан!',
-      clan: newClan,
-      gold: user.gold
-    });
-
-  } catch (error) {
-    console.error('Create clan error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
+    delete user.password;
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('Get user error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 2. Search Clans
-app.post('/api/clan/search', async (req, res) => {
+app.put('/api/user/:playerId', authAdmin, async (req, res) => {
   try {
-    const { term } = req.body;
-    let query = {};
-    if (term) {
-      const cleanTerm = term.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-      query = {
-        $or: [
-          { name: { $regex: new RegExp(cleanTerm, 'i') } },
-          { tag: { $regex: new RegExp(cleanTerm, 'i') } }
-        ]
-      };
-    }
+    const playerId = req.params.playerId.trim();
 
-    const clans = await clanDb.find(query);
-    const result = clans.map(c => ({
-      _id: c._id,
-      name: c.name,
-      tag: c.tag,
-      avatarUrl: c.avatarUrl || "",
-      description: c.description || "",
-      memberCount: c.members ? c.members.length : 0,
-      slotsLimit: c.slotsLimit || 25,
-      type: c.type || 'open'
-    }));
-
-    return res.json({ success: true, clans: result });
-  } catch (error) {
-    console.error('Search clan error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
-  }
-});
-
-// 3. Clan Info
-app.post('/api/clan/info', async (req, res) => {
-  try {
-    const { playerId, clanId } = req.body;
-
-    let targetClanId = clanId;
-    if (playerId) {
-      const user = await db.findByPlayerId(playerId);
-      if (user) {
-        sanitizeUser(user);
-        targetClanId = user.clanId;
+    // ── Handle Full Raw Document Replacement ─────────────────────────────────
+    if (req.body.isRaw) {
+      const doc = req.body.document;
+      if (!doc || typeof doc !== 'object') {
+        return res.status(400).json({ success: false, message: 'Неверные данные документа.' });
       }
-    }
 
-    if (!targetClanId) {
-      return res.json({ success: true, inClan: false });
-    }
-
-    const clan = await clanDb.findOne({ _id: targetClanId });
-    if (!clan) {
-      // Clear user status if clan not found
-      if (playerId) {
-        const user = await db.findByPlayerId(playerId);
-        if (user) {
-          user.clanId = "";
-          user.clanRole = "";
-          await db.save(user);
-        }
+      if (!doc.playerId) {
+        return res.status(400).json({ success: false, message: 'Поле playerId обязательно.' });
       }
-      return res.json({ success: true, inClan: false });
-    }
+      const newPid = String(doc.playerId).trim();
 
-    // Check if premium subscription has expired
-    const now = new Date();
-    if (clan.isPremium && clan.premiumExpiresAt && new Date(clan.premiumExpiresAt) < now) {
-      clan.isPremium = false;
-      clan.tagColor = '#bfbfbf';
-      await clanDb.save(clan);
-    }
-
-    const membersWithProfile = [];
-    if (clan.members) {
-      for (const m of clan.members) {
-        const profile = await db.findByPlayerId(m.playerId);
-        if (profile) {
-          membersWithProfile.push({
-            playerId: m.playerId,
-            username: profile.username,
-            role: m.role || 'member',
-            kills: profile.kills || "0",
-            avatar: profile.avatar || "",
-            status: profile.status || "regular",
-            nicknameColor: profile.nicknameColor || ""
-          });
-        }
-      }
-    }
-
-    // Sort order: leader -> co-leader -> member
-    const roleWeight = { leader: 3, 'co-leader': 2, member: 1 };
-    membersWithProfile.sort((a, b) => (roleWeight[b.role] || 0) - (roleWeight[a.role] || 0));
-
-    return res.json({
-      success: true,
-      inClan: true,
-      clan: {
-        _id: clan._id,
-        name: clan.name,
-        tag: clan.tag,
-        avatarUrl: clan.avatarUrl || "",
-        description: clan.description || "",
-        ownerId: clan.ownerId,
-        slotsLimit: clan.slotsLimit || 25,
-        type: clan.type || 'open',
-        members: membersWithProfile,
-        pendingRequests: clan.pendingRequests || [],
-        isPremium: clan.isPremium || false,
-        tagColor: clan.tagColor || '#bfbfbf',
-        premiumExpiresAt: clan.premiumExpiresAt || null
-      }
-    });
-
-  } catch (error) {
-    console.error('Get clan info error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
-  }
-});
-
-// 4. Leaders of Clans
-app.post('/api/clan/leaders', async (req, res) => {
-  try {
-    const clans = await clanDb.find({});
-    const leaders = [];
-
-    for (const c of clans) {
-      let totalKills = 0;
-      if (c.members) {
-        for (const m of c.members) {
-          const profile = await db.findByPlayerId(m.playerId);
-          if (profile) {
-            totalKills += parseInt(profile.kills || "0", 10);
-          }
-        }
-      }
-      leaders.push({
-        _id: c._id,
-        name: c.name,
-        tag: c.tag,
-        avatarUrl: c.avatarUrl || "",
-        memberCount: c.members ? c.members.length : 0,
-        slotsLimit: c.slotsLimit || 25,
-        totalKills: totalKills
+      const targetUser = await User.findOne({
+        $or: [{ playerId: playerId }, { username: new RegExp(`^${playerId}$`, 'i') }]
       });
+      if (!targetUser) {
+        return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+      }
+
+      if (newPid !== targetUser.playerId) {
+        const dup = await User.findOne({ playerId: newPid });
+        if (dup) {
+          return res.status(400).json({ success: false, message: `Игрок с Player ID "${newPid}" уже существует.` });
+        }
+      }
+
+      const rawId = targetUser._id;
+      delete doc._id;
+      delete doc.__v;
+
+      if (!doc.password && targetUser.password) {
+        doc.password = targetUser.password;
+      }
+
+      await User.replaceOne({ _id: rawId }, doc);
+      const updatedUser = await User.findById(rawId).lean();
+      delete updatedUser.password;
+      return res.json({ success: true, message: 'Документ успешно перезаписан в БД.', user: updatedUser });
     }
 
-    leaders.sort((a, b) => b.totalKills - a.totalKills);
+    // ── Handle Specific Field Updates ────────────────────────────────────────
+    const forbidden = ['_id', '__v'];
+    const updates = {};
 
-    return res.json({ success: true, leaders: leaders.slice(0, 15) });
-  } catch (error) {
-    console.error('Get clan leaders error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
-  }
-});
-
-// 5. Clan Actions
-app.post('/api/clan/action', async (req, res) => {
-  try {
-    const { playerId, action, targetId, value } = req.body;
-
-    if (!playerId || !action) {
-      return res.status(400).json({ success: false, message: 'Missing parameters.' });
+    // Validate Player ID if updating it
+    if (req.body.playerId) {
+      const newPid = String(req.body.playerId).trim();
+      const targetUser = await User.findOne({
+        $or: [{ playerId: playerId }, { username: new RegExp(`^${playerId}$`, 'i') }]
+      });
+      if (!targetUser) {
+        return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
+      }
+      if (newPid !== targetUser.playerId) {
+        const dup = await User.findOne({ playerId: newPid });
+        if (dup) {
+          return res.status(400).json({ success: false, message: `Игрок с Player ID "${newPid}" уже существует.` });
+        }
+      }
     }
 
-    const user = await db.findByPlayerId(playerId);
+    for (const [k, v] of Object.entries(req.body)) {
+      if (!forbidden.includes(k)) {
+        if (k === 'gold') {
+          updates[k] = Number(v);
+        } else if (k === 'premiumExpiresAt') {
+          updates[k] = v ? new Date(v) : null;
+        } else {
+          updates[k] = v;
+        }
+      }
+    }
+
+    const user = await User.findOneAndUpdate(
+      { $or: [{ playerId: playerId }, { username: new RegExp(`^${playerId}$`, 'i') }] },
+      { $set: updates },
+      { new: true }
+    ).lean();
+
     if (!user) {
       return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
     }
-    sanitizeUser(user);
 
-    // ACTIONS FOR NON-CLAN MEMBERS
-    if (action === 'join' || action === 'request') {
-      if (user.clanId) {
-        return res.status(400).json({ success: false, message: 'Вы уже состоите в клане.' });
-      }
-
-      const targetClan = await clanDb.findOne({ _id: targetId });
-      if (!targetClan) {
-        return res.status(404).json({ success: false, message: 'Клан не найден.' });
-      }
-
-      if (targetClan.members.length >= targetClan.slotsLimit) {
-        return res.status(400).json({ success: false, message: 'В клане нет свободных мест.' });
-      }
-
-      if (action === 'join') {
-        if (targetClan.type !== 'open') {
-          return res.status(400).json({ success: false, message: 'В этот клан нельзя вступить без одобрения.' });
-        }
-        targetClan.members.push({ playerId: playerId, role: 'member' });
-        user.clanId = targetClan._id.toString();
-        user.clanRole = 'member';
-        await clanDb.save(targetClan);
-        await db.save(user);
-        return res.json({ success: true, message: 'Вы успешно вступили в клан!' });
-      } else {
-        if (targetClan.type !== 'request') {
-          return res.status(400).json({ success: false, message: 'В этот клан нельзя отправить заявку.' });
-        }
-        if (!targetClan.pendingRequests) targetClan.pendingRequests = [];
-        if (!targetClan.pendingRequests.includes(playerId)) {
-          targetClan.pendingRequests.push(playerId);
-          await clanDb.save(targetClan);
-        }
-        return res.json({ success: true, message: 'Заявка на вступление успешно отправлена!' });
-      }
-    }
-
-    if (action === 'cancel_request') {
-      const targetClan = await clanDb.findOne({ _id: targetId });
-      if (targetClan) {
-        if (targetClan.pendingRequests) {
-          targetClan.pendingRequests = targetClan.pendingRequests.filter(id => id !== playerId);
-          await clanDb.save(targetClan);
-        }
-      }
-      return res.json({ success: true, message: 'Заявка отменена.' });
-    }
-
-    // ACTIONS FOR CLAN MEMBERS
-    if (!user.clanId) {
-      return res.status(400).json({ success: false, message: 'Вы не состоите в клане.' });
-    }
-
-    const clan = await clanDb.findOne({ _id: user.clanId });
-    if (!clan) {
-      user.clanId = "";
-      user.clanRole = "";
-      await db.save(user);
-      return res.status(404).json({ success: false, message: 'Ваш клан не найден.' });
-    }
-
-    const myRole = user.clanRole;
-
-    if (action === 'leave') {
-      if (myRole === 'leader') {
-        if (clan.members.length > 1) {
-          return res.status(400).json({ success: false, message: 'Вы должны передать лидерство перед тем как покинуть клан.' });
-        }
-        // If leader is the only member, disband
-        await clanDb.deleteOne({ _id: clan._id });
-        user.clanId = "";
-        user.clanRole = "";
-        await db.save(user);
-        return res.json({ success: true, message: 'Клан распущен.' });
-      }
-
-      clan.members = clan.members.filter(m => m.playerId !== playerId);
-      await clanDb.save(clan);
-
-      user.clanId = "";
-      user.clanRole = "";
-      await db.save(user);
-      return res.json({ success: true, message: 'Вы покинули клан.' });
-    }
-
-    if (action === 'disband') {
-      if (myRole !== 'leader') {
-        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
-      }
-
-      // Clear clan fields for all members
-      for (const m of clan.members) {
-        const u = await db.findByPlayerId(m.playerId);
-        if (u) {
-          u.clanId = "";
-          u.clanRole = "";
-          await db.save(u);
-        }
-      }
-
-      await clanDb.deleteOne({ _id: clan._id });
-      return res.json({ success: true, message: 'Клан распущен лидером.' });
-    }
-
-    if (action === 'upgrade_slots') {
-      const slotsToBuy = parseInt(value, 10);
-      if (isNaN(slotsToBuy) || slotsToBuy <= 0) {
-        return res.status(400).json({ success: false, message: 'Некорректное количество слотов.' });
-      }
-
-      if (clan.slotsLimit + slotsToBuy > 100) {
-        return res.status(400).json({ success: false, message: 'Максимальный лимит слотов — 100.' });
-      }
-
-      const cost = slotsToBuy * 1000;
-      if (user.gold < cost) {
-        return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
-      }
-
-      user.gold -= cost;
-      clan.slotsLimit += slotsToBuy;
-
-      await clanDb.save(clan);
-      await db.save(user);
-
-      return res.json({ success: true, message: `Лимит слотов успешно расширен до ${clan.slotsLimit}!`, gold: user.gold, slotsLimit: clan.slotsLimit });
-    }
-
-    if (action === 'buy_premium') {
-      if (myRole !== 'leader') {
-        return res.status(403).json({ success: false, message: 'Только Лидер может приобрести/продлить Premium статус для клана.' });
-      }
-      const cost = 25000;
-      if (user.gold < cost) {
-        return res.status(400).json({ success: false, message: `Недостаточно золота. Требуется ${cost} голды.` });
-      }
-      user.gold -= cost;
-
-      const now = new Date();
-      let expireDate;
-      if (clan.isPremium && clan.premiumExpiresAt && new Date(clan.premiumExpiresAt) > now) {
-        // Extend existing subscription by 30 days
-        expireDate = new Date(clan.premiumExpiresAt);
-        expireDate.setDate(expireDate.getDate() + 30);
-      } else {
-        // Start new subscription for 30 days
-        expireDate = new Date();
-        expireDate.setDate(expireDate.getDate() + 30);
-      }
-
-      clan.isPremium = true;
-      clan.premiumExpiresAt = expireDate;
-      await clanDb.save(clan);
-      await db.save(user);
-
-      const expiryFormatted = expireDate.toLocaleDateString('ru-RU');
-      return res.json({ success: true, message: `Премиум успешно оформлен/продлен до ${expiryFormatted}!`, gold: user.gold });
-    }
-
-    // ROLE/MANAGEMENT PERMISSIONS CHECK
-    const isAuthorized = (myRole === 'leader' || myRole === 'co-leader');
-
-    if (action === 'update_settings') {
-      if (!isAuthorized) {
-        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
-      }
-
-      let parsedValue = {};
-      if (typeof value === 'string') {
-        try {
-          parsedValue = JSON.parse(value);
-        } catch (e) {
-          parsedValue = {};
-        }
-      } else if (typeof value === 'object') {
-        parsedValue = value || {};
-      }
-
-      const { type, description, avatarUrl, tagColor } = parsedValue;
-
-      if (type) {
-        if (!['open', 'closed', 'request'].includes(type)) {
-          return res.status(400).json({ success: false, message: 'Некорректный тип входа.' });
-        }
-        clan.type = type;
-      }
-      if (description !== undefined) {
-        clan.description = description;
-      }
-      if (avatarUrl !== undefined) {
-        clan.avatarUrl = avatarUrl;
-      }
-      if (tagColor !== undefined && tagColor !== "") {
-        if (!clan.isPremium) {
-          return res.status(400).json({ success: false, message: 'Изменение цвета тега доступно только для Premium кланов.' });
-        }
-        const hexColorRegex = /^#[0-9A-Fa-f]{6}$/;
-        if (!hexColorRegex.test(tagColor)) {
-          return res.status(400).json({ success: false, message: 'Некорректный формат цвета (должен быть #HEX, например #FFCC00).' });
-        }
-        clan.tagColor = tagColor;
-      }
-
-      await clanDb.save(clan);
-      return res.json({ success: true, message: 'Настройки клана успешно обновлены!' });
-    }
-
-    if (action === 'accept' || action === 'decline') {
-      if (!isAuthorized) {
-        return res.status(403).json({ success: false, message: 'Недостаточно прав.' });
-      }
-
-      clan.pendingRequests = (clan.pendingRequests || []).filter(id => id !== targetId);
-
-      if (action === 'accept') {
-        if (clan.members.length >= clan.slotsLimit) {
-          return res.status(400).json({ success: false, message: 'В клане нет свободных мест.' });
-        }
-        const targetUser = await db.findByPlayerId(targetId);
-        if (targetUser) {
-          sanitizeUser(targetUser);
-          if (targetUser.clanId) {
-            await clanDb.save(clan);
-            return res.status(400).json({ success: false, message: 'Игрок уже состоит в другом клане.' });
-          }
-          clan.members.push({ playerId: targetId, role: 'member' });
-          targetUser.clanId = clan._id.toString();
-          targetUser.clanRole = 'member';
-          await db.save(targetUser);
-        }
-      }
-
-      await clanDb.save(clan);
-      return res.json({ success: true, message: `Заявка игрока ${action === 'accept' ? 'принята' : 'отклонена'}.` });
-    }
-
-    // ACTIONS REQUIRING TARGET MEMBERS
-    const targetMember = clan.members.find(m => m.playerId === targetId);
-    if (!targetMember) {
-      return res.status(404).json({ success: false, message: 'Участник не найден в вашем клане.' });
-    }
-
-    const targetUser = await db.findByPlayerId(targetId);
-
-    if (action === 'kick') {
-      const canKick = (myRole === 'leader') || (myRole === 'co-leader' && targetMember.role !== 'leader' && targetMember.role !== 'co-leader');
-      if (!canKick) {
-        return res.status(403).json({ success: false, message: 'Недостаточно прав для изгнания этого игрока.' });
-      }
-
-      clan.members = clan.members.filter(m => m.playerId !== targetId);
-      await clanDb.save(clan);
-
-      if (targetUser) {
-        targetUser.clanId = "";
-        targetUser.clanRole = "";
-        await db.save(targetUser);
-      }
-
-      return res.json({ success: true, message: 'Игрок успешно изгнан из клана.' });
-    }
-
-    if (action === 'promote') {
-      if (targetMember.role === 'member') {
-        if (myRole !== 'leader') {
-          return res.status(403).json({ success: false, message: 'Только Лидер может назначать Заместителей.' });
-        }
-        targetMember.role = 'co-leader';
-      } else {
-        return res.status(400).json({ success: false, message: 'Нельзя повысить роль далее.' });
-      }
-
-      await clanDb.save(clan);
-      if (targetUser) {
-        targetUser.clanRole = targetMember.role;
-        await db.save(targetUser);
-      }
-
-      return res.json({ success: true, message: `Игрок повышен до Зам. Главы.` });
-    }
-
-    if (action === 'demote') {
-      if (targetMember.role === 'co-leader') {
-        if (myRole !== 'leader') {
-          return res.status(403).json({ success: false, message: 'Только Лидер может понижать Заместителей.' });
-        }
-        targetMember.role = 'member';
-      } else {
-        return res.status(400).json({ success: false, message: 'Нельзя понизить роль далее.' });
-      }
-
-      await clanDb.save(clan);
-      if (targetUser) {
-        targetUser.clanRole = targetMember.role;
-        await db.save(targetUser);
-      }
-
-      return res.json({ success: true, message: `Игрок понижен до Участника.` });
-    }
-
-    if (action === 'transfer') {
-      if (myRole !== 'leader') {
-        return res.status(403).json({ success: false, message: 'Только Лидер может передать клан.' });
-      }
-      if (targetMember.role !== 'co-leader') {
-        return res.status(400).json({ success: false, message: 'Передать клан можно только Заместителю.' });
-      }
-
-      const myMember = clan.members.find(m => m.playerId === playerId);
-      if (myMember) myMember.role = 'co-leader';
-      user.clanRole = 'co-leader';
-
-      targetMember.role = 'leader';
-      clan.ownerId = targetId;
-
-      await clanDb.save(clan);
-      await db.save(user);
-
-      if (targetUser) {
-        targetUser.clanRole = 'leader';
-        await db.save(targetUser);
-      }
-
-      return res.json({ success: true, message: 'Лидерство клана успешно передано!' });
-    }
-
-    return res.status(400).json({ success: false, message: 'Invalid action.' });
-
-  } catch (error) {
-    console.error('Execute clan action error:', error);
-    return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера.' });
-  }
-});
-// --- TRADE SYSTEM ENDPOINTS ---
-
-app.post('/api/trades/create', async (req, res) => {
-  try {
-    const { username, targetPlayerId, itemUids, receiverItemUids } = req.body;
-    if (!username || !targetPlayerId) {
-      return res.status(400).json({ success: false, message: 'Неверные параметры трейда.' });
-    }
-
-    const sender = await db.findOne(username);
-    if (!sender) return res.status(404).json({ success: false, message: 'Отправитель не найден.' });
-
-    const receiver = await db.findByPlayerId(targetPlayerId);
-    if (!receiver) return res.status(404).json({ success: false, message: 'Получатель не найден.' });
-
-    if (sender.playerId === receiver.playerId) {
-      return res.status(400).json({ success: false, message: 'Нельзя отправить трейд самому себе.' });
-    }
-
-    let senderInventory = { items: [] };
-    if (sender.inventoryData) {
-      try { senderInventory = JSON.parse(sender.inventoryData); } catch (e) { }
-    }
-
-    let receiverInventory = { items: [] };
-    if (receiver.inventoryData) {
-      try { receiverInventory = JSON.parse(receiver.inventoryData); } catch (e) { }
-    }
-
-    // Check if sender has all items and they are NOT already in trade
-    const itemsToTrade = [];
-    const safeItemUids = itemUids || [];
-    for (const uid of safeItemUids) {
-      const item = senderInventory.items.find(i => i.uid === uid);
-      if (!item) {
-        return res.status(400).json({ success: false, message: 'Ваша вещь не найдена.' });
-      }
-      if (item.isTradeFrozen) {
-        return res.status(400).json({ success: false, message: 'Одна или несколько ваших вещей уже находятся в другом трейде.' });
-      }
-      if (item.IsEquipped) {
-        return res.status(400).json({ success: false, message: 'Нельзя обменивать надетые вещи.' });
-      }
-      itemsToTrade.push(item);
-    }
-
-    // Quick check if receiver has the requested items (do not freeze them yet)
-    const safeReceiverUids = receiverItemUids || [];
-    for (const uid of safeReceiverUids) {
-      const item = receiverInventory.items.find(i => i.uid === uid);
-      if (!item) {
-        return res.status(400).json({ success: false, message: 'Запрошенная вещь у друга не найдена.' });
-      }
-      if (item.IsEquipped) {
-        return res.status(400).json({ success: false, message: 'Друг сейчас надел эту вещь.' });
-      }
-    }
-
-    // Freeze sender items
-    const senderItemNames = itemsToTrade.map(i => i.Name);
-    for (const item of itemsToTrade) {
-      item.isTradeFrozen = true;
-    }
-    sender.inventoryData = JSON.stringify(senderInventory);
-    await db.save(sender);
-
-    const receiverItemNames = safeReceiverUids.map(uid => receiverInventory.items.find(i => i.uid === uid).Name);
-
-    // Create trade offer
-    const offer = await tradeDb.create({
-      senderUsername: sender.username,
-      receiverPlayerId: receiver.playerId,
-      senderItems: safeItemUids,
-      receiverItems: safeReceiverUids,
-      senderItemNames: senderItemNames,
-      receiverItemNames: receiverItemNames,
-      status: 'pending'
-    });
-
-    return res.json({ success: true, message: 'Трейд успешно отправлен!', trade: offer });
+    delete user.password;
+    res.json({ success: true, message: 'Информация о пользователе обновлена.', user });
   } catch (err) {
-    console.error('Trade create error:', err);
-    return res.status(500).json({ success: false, message: 'Ошибка сервера при создании трейда.' });
+    console.error('Update user error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-app.get('/api/trades/pending', async (req, res) => {
+// ── Promocode Endpoints ──────────────────────────────────────────────────────
+app.get('/api/promocodes', authAdmin, async (req, res) => {
   try {
-    const { username, playerId } = req.query;
-    if (!username || !playerId) return res.status(400).json({ success: false, message: 'Missing params' });
-
-    const incoming = await tradeDb.find({ receiverPlayerId: playerId, status: 'pending' });
-    const outgoing = await tradeDb.find({ senderUsername: username, status: 'pending' });
-
-    return res.json({ success: true, incoming, outgoing });
+    const promos = await Promocode.find({}).sort({ _id: -1 }).lean();
+    res.json({ success: true, promos });
   } catch (err) {
-    console.error('Trade pending error:', err);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Get promos error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Anti-Dupe In-Memory Lock for Trades
-const activeTradeLocks = new Set();
-
-app.post('/api/trades/accept', async (req, res) => {
-  const { username, tradeId } = req.body;
-
-  if (!tradeId) return res.status(400).json({ success: false, message: 'Trade ID missing.' });
-
-  // RACE CONDITION DUPE PROTECTION
-  if (activeTradeLocks.has(tradeId)) {
-    return res.status(400).json({ success: false, message: 'Трейд уже обрабатывается сервером. Пожалуйста, подождите.' });
-  }
-  activeTradeLocks.add(tradeId);
-
+app.post('/api/promocodes', authAdmin, async (req, res) => {
   try {
-    const trade = await tradeDb.findOne({ _id: tradeId });
-    if (!trade || trade.status !== 'pending') return res.status(400).json({ success: false, message: 'Трейд не найден или уже завершен.' });
-
-    const receiver = await db.findOne(username);
-    if (!receiver || receiver.playerId !== trade.receiverPlayerId) return res.status(403).json({ success: false, message: 'Нет доступа.' });
-
-    const sender = await db.findOne(trade.senderUsername);
-    if (!sender) return res.status(404).json({ success: false, message: 'Отправитель не найден.' });
-
-    let senderInv = { items: [] };
-    if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) { }
-
-    let receiverInv = { items: [] };
-    if (receiver.inventoryData) try { receiverInv = JSON.parse(receiver.inventoryData); } catch (e) { }
-
-    // 1. Move items from Sender to Receiver
-    const itemsToMoveToReceiver = [];
-    senderInv.items = senderInv.items.filter(item => {
-      if (trade.senderItems.includes(item.uid)) {
-        item.isTradeFrozen = false;
-        itemsToMoveToReceiver.push(item);
-        return false; // Remove from sender
-      }
-      return true; // Keep in sender
-    });
-
-    if (itemsToMoveToReceiver.length !== trade.senderItems.length) {
-      // Revert Sender items and cancel trade
-      senderInv.items.push(...itemsToMoveToReceiver); // put them back
-      sender.inventoryData = JSON.stringify(senderInv);
-      await db.save(sender);
-      trade.status = 'cancelled';
-      await tradeDb.save(trade);
-      return res.status(400).json({ success: false, message: 'Вещи отправителя больше недоступны.' });
+    const { code, rewards, maxActivations, expirationDate } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Код промокода обязателен.' });
     }
 
-    // 2. Check and Move items from Receiver to Sender
-    const safeReceiverItems = trade.receiverItems || [];
-    const itemsToMoveToSender = [];
-    receiverInv.items = receiverInv.items.filter(item => {
-      if (safeReceiverItems.includes(item.uid)) {
-        if (item.isTradeFrozen || item.IsEquipped) {
-          return true; // Cannot move this item right now
-        }
-        item.isTradeFrozen = false;
-        itemsToMoveToSender.push(item);
-        return false; // Remove from receiver
-      }
-      return true; // Keep in receiver
-    });
-
-    if (itemsToMoveToSender.length !== safeReceiverItems.length) {
-      // Revert EVERYTHING
-      senderInv.items.push(...itemsToMoveToReceiver);
-      receiverInv.items.push(...itemsToMoveToSender);
-      sender.inventoryData = JSON.stringify(senderInv);
-      await db.save(sender);
-      trade.status = 'cancelled';
-      await tradeDb.save(trade);
-      return res.status(400).json({ success: false, message: 'Ваши запрашиваемые вещи недоступны для обмена.' });
+    const cleanCode = code.toUpperCase().trim();
+    const exists = await Promocode.findOne({ code: new RegExp(`^${cleanCode}$`, 'i') });
+    if (exists) {
+      return res.status(400).json({ success: false, message: `Промокод "${cleanCode}" уже существует.` });
     }
 
-    // 3. Complete swap
-    receiverInv.items.push(...itemsToMoveToReceiver);
-    senderInv.items.push(...itemsToMoveToSender);
+    const promo = await Promocode.create({
+      code: cleanCode,
+      rewards: rewards || [],
+      maxActivations: maxActivations || 0,
+      currentActivations: 0,
+      expirationDate: expirationDate || null,
+      usedBy: []
+    });
 
-    sender.inventoryData = JSON.stringify(senderInv);
-    receiver.inventoryData = JSON.stringify(receiverInv);
-
-    await db.save(sender);
-    await db.save(receiver);
-
-    trade.status = 'accepted';
-    await tradeDb.save(trade);
-
-    return res.json({ success: true, message: 'Трейд успешно принят!' });
+    res.json({ success: true, message: 'Промокод успешно создан.', promo });
   } catch (err) {
-    console.error('Trade accept error:', err);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  } finally {
-    // Release Lock
-    activeTradeLocks.delete(tradeId);
+    console.error('Create promo error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-app.post('/api/trades/decline', async (req, res) => {
+app.delete('/api/promocodes/:code', authAdmin, async (req, res) => {
   try {
-    const { username, tradeId, action } = req.body; // action can be 'decline' or 'cancel'
-    const trade = await tradeDb.findOne({ _id: tradeId });
-    if (!trade || trade.status !== 'pending') return res.status(400).json({ success: false, message: 'Трейд не найден или уже завершен.' });
-
-    const user = await db.findOne(username);
-    if (!user) return res.status(404).json({ success: false, message: 'Пользователь не найден.' });
-
-    if (action === 'cancel' && trade.senderUsername !== username) return res.status(403).json({ success: false, message: 'Нет доступа.' });
-    if (action === 'decline' && trade.receiverPlayerId !== user.playerId) return res.status(403).json({ success: false, message: 'Нет доступа.' });
-
-    const sender = await db.findOne(trade.senderUsername);
-    if (sender) {
-      let senderInv = { items: [] };
-      if (sender.inventoryData) try { senderInv = JSON.parse(sender.inventoryData); } catch (e) { }
-
-      senderInv.items.forEach(item => {
-        if (trade.senderItems.includes(item.uid)) {
-          item.isTradeFrozen = false;
-        }
-      });
-      sender.inventoryData = JSON.stringify(senderInv);
-      await db.save(sender);
+    const code = req.params.code.toUpperCase().trim();
+    const result = await Promocode.deleteOne({ code: new RegExp(`^${code}$`, 'i') });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: 'Промокод не найден.' });
     }
-
-    trade.status = action === 'cancel' ? 'cancelled' : 'declined';
-    await tradeDb.save(trade);
-
-    return res.json({ success: true, message: `Трейд ${action === 'cancel' ? 'отменен' : 'отклонен'}.` });
+    res.json({ success: true, message: 'Промокод успешно удален.' });
   } catch (err) {
-    console.error('Trade decline error:', err);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Delete promo error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Skins that cannot be purchased from market or pack shop (administrative/exclusive skins)
-const MUSIC_KITS_PRICES = {
-  "gazan-67": 14000,
-  "gazan-cher": 6500,
-  "halozy-snow": 3500,
-  "kurarin": 15000,
-  "legacy-slowed-down": 9000,
-  "marisa-stole": 9000,
-  "pokoe": 5000
-};
+// ── Skins Catalog Endpoint ────────────────────────────────────────────────────
+app.get('/api/skins', authAdmin, (req, res) => {
+  const possiblePaths = [
+    path.join(__dirname, 'skins_catalog.json'),
+    'c:\\StandWeyz1 project\\Server\\skins_catalog.json'
+  ];
 
-const BLOCKED_FROM_SALE_SKINS = [
-  "Karambit_Crysg" // Add the Unity asset name of your secret skin here
-];
-
-// Endpoint: Secure Server-Authoritative Match Rewards
-const CHEAP_SKINS = [
-  "AKR12_Aurora",
-  "AKR12_Carbon",
-  "AKR12_PixelCamouflage",
-  "AKR_Carbon",
-  "G22_PixelCamouflage",
-  "G22_Nest"
-];
-
-app.post('/api/match/reward', async (req, res) => {
-  try {
-    const { username, playerId } = req.body;
-    let user;
-    if (playerId) {
-      user = await db.findByPlayerId(playerId);
-    } else if (username) {
-      user = await db.findOne(username);
-    } else {
-      return res.status(400).json({ success: false, message: 'Username or PlayerId is required.' });
-    }
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const roll = Math.random();
-    let rewardType = "nothing";
-    let rolledGold = 0;
-    let rolledSkin = null;
-
-    if (roll < 0.1) {
-      rewardType = "skin";
-      rolledSkin = CHEAP_SKINS[Math.floor(Math.random() * CHEAP_SKINS.length)];
-
-      let inventory = { items: [] };
-      if (user.inventoryData) {
-        try {
-          inventory = JSON.parse(user.inventoryData);
-          if (!inventory.items) {
-            inventory.items = [];
-          }
-        } catch (e) {
-          inventory = { items: [] };
-        }
-      }
-
-      const newItem = {
-        Name: rolledSkin,
-        IsEquipped: false,
-        IsNew: true,
-        uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-        Charm: "",
-        Stickers: ["", "", "", ""]
-      };
-
-      inventory.items.push(newItem);
-      user.inventoryData = JSON.stringify(inventory);
-
-    } else if (roll < 0.8) {
-      rewardType = "gold";
-      rolledGold = Math.floor(Math.random() * (500 - 50 + 1)) + 50;
-      user.gold = (user.gold || 0) + rolledGold;
-    }
-
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    // Generate HMAC Signature for Inventory Integrity
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    let msg = "Только удача!";
-    if (rewardType === "gold") {
-      msg = `Вы выиграли ${rolledGold} золота!`;
-    } else if (rewardType === "skin") {
-      msg = `Вы выиграли скин: ${rolledSkin}!`;
-    }
-
-    return res.json({
-      success: true,
-      message: msg,
-      rewardType: rewardType,
-      gold: rolledGold,
-      skinName: rolledSkin,
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Match reward endpoint error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Secure Server-Authoritative Pack Purchase
-app.post('/api/packs/purchase', async (req, res) => {
-  try {
-    const { username, price, items } = req.body;
-    if (!username || price === undefined || !items) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    if (price !== undefined && Number(price) >= 6000) {
-      return res.status(400).json({ success: false, message: 'Акция закончилась 25.05.2026' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    let computedPrice = 0;
-    for (const item of items) {
-      if (!item || !item.name) continue;
-      const name = item.name.toLowerCase();
-      if (name.includes('case') || name.includes('box')) {
-        let itemPrice = 100;
-        if (name.includes('origin') && name.includes('case')) {
-          itemPrice = 1000;
-        } else if (name.includes('furious') && name.includes('case')) {
-          itemPrice = 1000;
-        } else if (name.includes('rival') && name.includes('case')) {
-          itemPrice = 1000;
-        }
-        computedPrice += itemPrice;
-      } else if (MUSIC_KITS_PRICES[name]) {
-        computedPrice += MUSIC_KITS_PRICES[name];
-      }
-    }
-
-    if (computedPrice >= 6000) {
-      return res.status(400).json({ success: false, message: 'Акция закончилась 25.05.2026' });
-    }
-
-    if (user.gold < computedPrice) {
-      return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
-    }
-
-    // Anti-cheat: verify no blocked skins are being purchased
-    for (const item of items) {
-      if (item && BLOCKED_FROM_SALE_SKINS.includes(item.name)) {
-        return res.status(400).json({ success: false, message: `Предмет ${item.name} недоступен для покупки.` });
-      }
-    }
-
-    // Deduct gold
-    user.gold -= computedPrice;
-
-    // Load current inventory
-    let inventory = { items: [] };
-    if (user.inventoryData) {
+  let catalogFound = false;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
       try {
-        inventory = JSON.parse(user.inventoryData);
-        if (!inventory.items) {
-          inventory.items = [];
+        const fileContent = fs.readFileSync(p, 'utf8');
+        const data = JSON.parse(fileContent);
+        if (data && Array.isArray(data.skins)) {
+          const skinNames = data.skins.map(s => s.name).filter(Boolean);
+          res.json({ success: true, skins: skinNames });
+          catalogFound = true;
+          break;
         }
-      } catch (e) {
-        inventory = { items: [] };
+      } catch (err) {
+        console.error(`Error reading catalog at ${p}:`, err.message);
       }
     }
+  }
 
-    // Add items
-    for (const item of items) {
-      // Normal version
-      inventory.items.push({
-        Name: item.name,
-        IsEquipped: false,
-        IsNew: true,
-        uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-        Charm: "",
-        Stickers: ["", "", "", ""]
-      });
-
-      // StatTrack version if applicable
-      if (item.canBeInStatTrack) {
-        inventory.items.push({
-          Name: item.name,
-          IsEquipped: false,
-          IsNew: true,
-          StatTrack: { IsStatTrack: true, Kills: 0 },
-          uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-          Charm: "",
-          Stickers: ["", "", "", ""]
-        });
-      }
-    }
-
-    user.inventoryData = JSON.stringify(inventory);
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    // Generate HMAC Signature for Inventory Integrity
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Pack purchased successfully!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Pack purchase endpoint error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  if (!catalogFound) {
+    // Fallback default list of popular skins if catalog doesn't load
+    const fallbackSkins = [
+      "AKR12_Aurora", "AKR12_Carbon", "AKR12_Geometric", "AKR_Dragon", "AKR_Necromancer", "AKR_TreasureHunter",
+      "AWM_Dragon", "AWM_Genesis", "AWM_TreasureHunter", "Butterfly_DragonGlass", "Butterfly_Gold", "Butterfly_Starfall",
+      "Deagle_DragonGlass", "Deagle_GreenRevenge", "Deagle_Predator", "FiveSeven_Poison", "FiveSeven_Toxic",
+      "Karambit_Gold", "Karambit_Claw", "M4_Samurai", "M4_Lizard", "M40_Grip", "M16_Winged"
+    ];
+    res.json({ success: true, skins: fallbackSkins, isFallback: true });
   }
 });
 
-// Endpoint: Secure Market Buy
-app.post('/api/market/buy', async (req, res) => {
-  try {
-    const { username, price, itemName, isStatTrack } = req.body;
-    if (!username || price === undefined || !itemName) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    if (BLOCKED_FROM_SALE_SKINS.includes(itemName)) {
-      return res.status(400).json({ success: false, message: 'Этот предмет недоступен для покупки.' });
-    }
-
-    const authoritativePrice = getSkinPrice(itemName);
-
-    if (user.gold < authoritativePrice) {
-      return res.status(400).json({ success: false, message: 'Недостаточно золота.' });
-    }
-
-    user.gold -= authoritativePrice;
-
-    let inventory = { items: [] };
-    if (user.inventoryData) {
-      try {
-        inventory = JSON.parse(user.inventoryData);
-        if (!inventory.items) {
-          inventory.items = [];
-        }
-      } catch (e) {
-        inventory = { items: [] };
-      }
-    }
-
-    const newItem = {
-      Name: itemName,
-      IsEquipped: false,
-      IsNew: true,
-      uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-      Charm: "",
-      Stickers: ["", "", "", ""]
-    };
-
-    if (isStatTrack) {
-      newItem.StatTrack = { IsStatTrack: true, Kills: 0 };
-    }
-
-    inventory.items.push(newItem);
-    user.inventoryData = JSON.stringify(inventory);
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Item purchased successfully!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Market buy error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
+// ── Fallback Route SPA ────────────────────────────────────────────────────────
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Endpoint: Secure Case Opening
-app.post('/api/inventory/open-case', async (req, res) => {
-  try {
-    const { username, caseUid, droppedSkinName, isStatTrack } = req.body;
-    if (!username || !caseUid || !droppedSkinName) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    let inventory = { items: [] };
-    if (user.inventoryData) {
-      try {
-        inventory = JSON.parse(user.inventoryData);
-        if (!inventory.items) {
-          inventory.items = [];
-        }
-      } catch (e) {
-        inventory = { items: [] };
-      }
-    }
-
-    // Find and remove the case item
-    const caseIndex = inventory.items.findIndex(item => item.uid === caseUid);
-    if (caseIndex === -1) {
-      return res.status(400).json({ success: false, message: 'Кейс/бокс не найден в вашем инвентаре.' });
-    }
-
-    // Remove the case
-    inventory.items.splice(caseIndex, 1);
-
-    // Create the dropped skin item
-    const newSkinItem = {
-      Name: droppedSkinName,
-      IsEquipped: false,
-      IsNew: true,
-      uid: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
-      Charm: "",
-      Stickers: ["", "", "", ""]
-    };
-
-    if (isStatTrack) {
-      newSkinItem.StatTrack = { IsStatTrack: true, Kills: 0 };
-    }
-
-    inventory.items.push(newSkinItem);
-    user.inventoryData = JSON.stringify(inventory);
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Case opened successfully!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Case open error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Secure Market Sell
-app.post('/api/market/sell', async (req, res) => {
-  try {
-    const { username, goldReward, itemUid } = req.body;
-    if (!username || goldReward === undefined || !itemUid) {
-      return res.status(400).json({ success: false, message: 'Missing required parameters.' });
-    }
-
-    const user = await db.findOne(username);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    let inventory = { items: [] };
-    if (user.inventoryData) {
-      try {
-        inventory = JSON.parse(user.inventoryData);
-        if (!inventory.items) {
-          inventory.items = [];
-        }
-      } catch (e) {
-        inventory = { items: [] };
-      }
-    }
-
-    const soldItem = inventory.items.find(item => item.uid === itemUid);
-    if (!soldItem) {
-      return res.status(400).json({ success: false, message: 'Item not found in user inventory.' });
-    }
-
-    // Enforce server-side authoritative gold reward calculation
-    const basePrice = getSkinPrice(soldItem.Name);
-    const isStatTrack = soldItem.StatTrack && soldItem.StatTrack.IsStatTrack;
-    const finalPrice = isStatTrack ? (basePrice + 50) : basePrice;
-    const authoritativeGoldReward = Math.round(finalPrice * 0.5);
-
-    inventory.items = inventory.items.filter(item => item.uid !== itemUid);
-
-    user.gold += authoritativeGoldReward;
-    user.inventoryData = JSON.stringify(inventory);
-    await db.save(user);
-
-    let clanTag = "";
-    let clanTagColor = "#bfbfbf";
-    if (user.clanId) {
-      const clan = await clanDb.findOne({ _id: user.clanId });
-      if (clan) {
-        clanTag = clan.tag || "";
-        clanTagColor = clan.tagColor || "#bfbfbf";
-      }
-    }
-
-    const inventoryDataStr = user.inventoryData || "{}";
-    const hmac = crypto.createHmac('sha256', 'Inventory_Pub_Key_0091');
-    hmac.update(inventoryDataStr);
-    const signature = hmac.digest('hex');
-
-    return res.json({
-      success: true,
-      message: 'Item sold successfully!',
-      user: {
-        username: user.username,
-        playerId: user.playerId,
-        gold: user.gold,
-        kills: user.kills,
-        deaths: user.deaths,
-        headshots: user.headshots,
-        avatar: user.avatar,
-        inventoryData: inventoryDataStr,
-        inventorySignature: signature,
-        status: user.status || "regular",
-        nicknameColor: user.nicknameColor || "",
-        clanTag: clanTag,
-        clanTagColor: clanTagColor,
-        premiumExpiresAt: user.premiumExpiresAt || null,
-        equippedMusicKit: user.equippedMusicKit || ""
-      }
-    });
-
-  } catch (error) {
-    console.error('Market sell error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-
-// Endpoint: Get Player Inventory Info for Trade
-app.get('/api/inventory/:playerId', async (req, res) => {
-  try {
-    const playerId = req.params.playerId;
-    const targetUser = await db.findByPlayerId(playerId);
-    if (!targetUser) return res.status(404).json({ success: false, message: 'User not found.' });
-
-    let inventory = { items: [] };
-    if (targetUser.inventoryData) {
-      try { inventory = JSON.parse(targetUser.inventoryData); } catch (e) { }
-    }
-
-    // Filter out equipped and frozen items from what we send back to ensure accurate picking
-    const availableItems = inventory.items.filter(i => !i.isTradeFrozen && !i.IsEquipped);
-
-    return res.json({ success: true, inventory: availableItems });
-  } catch (e) {
-    console.error('Inventory GET error:', e);
-    return res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date() });
-});
-
-app.listen(PORT, () => {
-  console.log(`StandWeyz Account API Server is running on port ${PORT}`);
-  console.log(`Fallback JSON database path: ${dbFilePath}`);
+// Start Server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Standox Admin Panel running on http://localhost:${PORT}`);
 });
